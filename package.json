@@ -1,0 +1,47 @@
+{
+  "name": "underworld-quick-takeover",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:web": "node node_modules/next/dist/bin/next build apps/web",
+    "start:server": "node node_modules/tsx/dist/cli.mjs apps/server/src/main.ts",
+    "db:generate": "node node_modules/prisma/build/index.js generate --schema apps/server/prisma/schema.prisma",
+    "db:migrate": "node node_modules/prisma/build/index.js migrate deploy --schema apps/server/prisma/schema.prisma",
+    "dev:web": "node node_modules/next/dist/bin/next dev apps/web",
+    "test": "node node_modules/vitest/vitest.mjs run",
+    "test:e2e": "node node_modules/@playwright/test/cli.js test",
+    "test:watch": "node node_modules/vitest/vitest.mjs",
+    "typecheck": "node node_modules/typescript/bin/tsc -b",
+    "check": "npm run typecheck && npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "prisma": "6.12.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@prisma/client": "6.12.0",
+    "fastify": "^5.6.0",
+    "motion": "^12.23.0",
+    "next": "^16.0.0",
+    "pg": "^8.16.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "socket.io": "^4.8.0",
+    "socket.io-client": "^4.8.0",
+    "zod": "^4.1.0"
+  }
+}

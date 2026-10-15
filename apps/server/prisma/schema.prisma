@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoomStatus {
+  LOBBY
+  ACTIVE
+  FINALE
+  CLOSED
+}
+
+model Room {
+  id          String        @id @default(uuid()) @db.Uuid
+  code        String        @unique @db.VarChar(6)
+  status      RoomStatus    @default(LOBBY)
+  hostPlayerId String?      @db.Uuid
+  capacity    Int           @default(8)
+  snapshot    Json
+  version     Int           @default(1)
+  deadlineAt  DateTime?
+  leaseOwner  String?
+  leaseUntil  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  expiresAt   DateTime
+  players     Player[]
+  events      MatchEvent[]
+  chats       ChatMessage[]
+
+  @@index([status, deadlineAt])
+}
+
+model Player {
+  id                 String   @id @db.Uuid
+  roomId             String   @db.Uuid
+  seat               Int
+  nickname           String   @db.VarChar(20)
+  reconnectTokenHash String   @db.VarChar(64)
+  connected          Boolean  @default(false)
+  lastSeenAt         DateTime @default(now())
+  room                Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, seat])
+  @@unique([roomId, nickname])
+}
+
+model MatchEvent {
+  id          BigInt   @id @default(autoincrement())
+  roomId      String   @db.Uuid
+  sequence    Int
+  commandId   String?  @db.VarChar(64)
+  actorId     String?  @db.Uuid
+  type        String   @db.VarChar(64)
+  payload     Json
+  createdAt   DateTime @default(now())
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, sequence])
+  @@unique([roomId, commandId, actorId])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  roomId    String   @db.Uuid
+  playerId  String   @db.Uuid
+  body      String   @db.VarChar(280)
+  createdAt DateTime @default(now())
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
