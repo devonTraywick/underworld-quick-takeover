@@ -111,6 +111,7 @@ export function useGame() {
     respondDeal: (dealId: string, accept: boolean) => run("deal:respond", { dealId, accept }),
     withdrawDeal: (dealId: string) => run("deal:withdraw", { dealId }),
     sendChat: (body: string) => run("chat:send", { body }),
+    sendPrivateMessage: (recipientId: string, body: string) => run("message:sendPrivate", { recipientId, body }),
     voteRematch: () => run("rematch:vote", {}),
     leaveRoom: async () => { await run("room:leave", {}); leaveLocal(); },
     forgetSession: leaveLocal,

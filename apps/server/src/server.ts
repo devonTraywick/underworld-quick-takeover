@@ -27,6 +27,7 @@ import {
   draftCommandSchema,
   joinRoomSchema,
   operationCommandSchema,
+  privateMessageCommandSchema,
   readyCommandSchema,
   resumeRoomSchema,
 } from "./schemas.js";
@@ -55,7 +56,7 @@ export interface MultiplayerServerOptions {
 
 type AckCallback = (ack: unknown) => void;
 
-const DEFAULT_DURATIONS: PhaseDurations = { negotiation: 20_000, draft: 15_000, operations: 25_000, reveal: 10_000 };
+const DEFAULT_DURATIONS: PhaseDurations = { negotiation: 25_000, draft: 20_000, operations: 30_000, reveal: 10_000 };
 
 export class MultiplayerServer {
   readonly app: FastifyInstance;
@@ -227,6 +228,21 @@ export class MultiplayerServer {
         room.chats.push({ id: randomUUID(), playerId: player.id, nickname: player.nickname, body: data.body, createdAt: now });
         room.chats = room.chats.slice(-100);
       }));
+      socket.on("message:sendPrivate", (payload, ack) => void this.withCommand(socket, "message:sendPrivate", privateMessageCommandSchema, payload, ack, (room, session, data) => {
+        if (data.recipientId === session.playerId || !room.players.some((player) => player.id === data.recipientId)) {
+          throw commandFailure("INVALID_TARGET", "Private message recipient must be another room player");
+        }
+        const now = this.clock.now();
+        const key = `${room.code}:${session.playerId}`;
+        const recent = (this.chatWindows.get(key) ?? []).filter((time) => time > now - 10_000);
+        if (recent.length >= 5) throw commandFailure("RATE_LIMITED", "Message limit exceeded", true);
+        recent.push(now); this.chatWindows.set(key, recent);
+        const player = room.players.find((candidate) => candidate.id === session.playerId)!;
+        room.privateMessages ??= [];
+        room.privateMessages.push({ id: randomUUID(), playerId: player.id, recipientId: data.recipientId,
+          nickname: player.nickname, body: data.body, createdAt: now });
+        room.privateMessages = room.privateMessages.slice(-200);
+      }));
       socket.on("state:resync", () => void this.resync(socket));
       socket.on("disconnect", () => void this.markDisconnected(socket));
     });
@@ -244,7 +260,7 @@ export class MultiplayerServer {
         id: randomUUID(), code, status: "lobby", hostPlayerId: playerId, capacity: 8,
         players: [{ id: playerId, nickname: data.nickname, seat: 0, reconnectTokenHash: this.hashToken(token), connected: true, lastSeenAt: now }],
         game: null, readyPlayerIds: [], rematchPlayerIds: [], deadlineAt: null, version: 1, processedCommands: {}, chats: [],
-        createdAt: now, expiresAt: now + 24 * 60 * 60 * 1000,
+        privateMessages: [], createdAt: now, expiresAt: now + 24 * 60 * 60 * 1000,
       };
       await this.repository.create(room);
       await this.establishSession(socket, room, playerId, token);
@@ -386,7 +402,10 @@ export class MultiplayerServer {
     this.io.to(`room:${room.code}`).emit("state:public", publicState);
     if (room.game) {
       for (const player of room.players) {
-        this.io.to(`player:${player.id}`).emit("state:private", projectPrivate(room.game, player.id));
+        this.io.to(`player:${player.id}`).emit("state:private", {
+          ...projectPrivate(room.game, player.id),
+          privateMessages: (room.privateMessages ?? []).filter((message) => message.playerId === player.id || message.recipientId === player.id),
+        });
         const deals = room.game.deals.filter((deal) => deal.proposerId === player.id || deal.recipientId === player.id);
         this.io.to(`player:${player.id}`).emit("deal:changed", deals);
       }

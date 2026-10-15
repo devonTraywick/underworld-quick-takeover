@@ -14,7 +14,7 @@ describeDatabase("PrismaRoomRepository", () => {
       id: randomUUID(), code: `P${Math.random().toString(36).slice(2, 7).toUpperCase()}`.padEnd(6, "X").slice(0, 6),
       status: "active", hostPlayerId: playerId, capacity: 8,
       players: [{ id: playerId, nickname: "Persistent Boss", seat: 0, reconnectTokenHash: "a".repeat(64), connected: true, lastSeenAt: now }],
-      game: null, readyPlayerIds: [], rematchPlayerIds: [], deadlineAt: now - 1, version: 1, processedCommands: {}, chats: [],
+      game: null, readyPlayerIds: [], rematchPlayerIds: [], deadlineAt: now - 1, version: 1, processedCommands: {}, chats: [], privateMessages: [],
       createdAt: now, expiresAt: now + 60_000,
     };
     await repository.create(room);

@@ -19,6 +19,10 @@ export const operationCommandSchema = baseCommandSchema.extend({
 }).strict();
 export const readyCommandSchema = baseCommandSchema.extend({ ready: z.boolean() }).strict();
 export const chatCommandSchema = baseCommandSchema.extend({ body: z.string().trim().min(1).max(280) }).strict();
+export const privateMessageCommandSchema = baseCommandSchema.extend({
+  recipientId: z.uuid(),
+  body: z.string().trim().min(1).max(280),
+}).strict();
 export const dealProposeSchema = baseCommandSchema.extend({
   recipientId: z.uuid(),
   type: z.enum(["joint-operation", "non-aggression", "protection-pact"]),

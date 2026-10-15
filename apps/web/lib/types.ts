@@ -18,7 +18,8 @@ export interface PublicGame {
   players: PublicPlayer[];
   market: CardInstance[];
   submissionCount: number;
-  revealLog: Array<{ round: number; playerId: PlayerId; cardType: CardInstance["type"]; successful: boolean; automatic: boolean }>;
+  revealLog: Array<{ round: number; playerId: PlayerId; cardType: CardInstance["type"]; successful: boolean; automatic: boolean;
+    districtId?: DistrictId; targetPlayerId?: PlayerId; stakeDelta?: number; influenceDelta: number; betrayed: boolean; ownerId?: PlayerId | null }>;
 }
 
 export interface PublicState {
@@ -54,6 +55,7 @@ export interface PrivateState {
   draftPreferences: string[];
   intelligence: Array<{ round: number; targetPlayerId: PlayerId; cardType: CardInstance["type"]; strongestDistrictId: DistrictId | null; hasDealWithYou: boolean }>;
   deals: Deal[];
+  privateMessages: Array<{ id: string; playerId: PlayerId; recipientId: PlayerId; nickname: string; body: string; createdAt: number }>;
 }
 
 export interface SessionData { roomCode: string; playerId: PlayerId; reconnectToken: string }

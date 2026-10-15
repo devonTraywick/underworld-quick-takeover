@@ -29,6 +29,7 @@ export function CityMap({ game, selected, onSelect }: { game: PublicGame; select
   const playerById = new Map(game.players.map((player) => [player.id, player]));
   return (
     <div className="map-shell" aria-label="City district map">
+      <div className="city-art" aria-hidden="true" />
       <div className="map-grid" aria-hidden="true" />
       <svg className="city-map" viewBox="0 0 640 490" role="group">
         {game.activeDistricts.map((id) => {

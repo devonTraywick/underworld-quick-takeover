@@ -85,6 +85,10 @@ export function resolveOperations(state: GameState): GameState {
   if (state.phase !== "operations") throw new Error("Operations can only resolve during operations phase");
   const next = structuredClone(state);
   for (const playerId of next.seatOrder) next.players[playerId]!.operation = normalizeChoice(next, playerId);
+  const influenceBefore = Object.fromEntries(next.seatOrder.map((playerId) => [playerId, next.players[playerId]!.influence]));
+  const stakesBefore = Object.fromEntries(next.activeDistricts.flatMap((districtId) => next.seatOrder.map((playerId) => [
+    `${districtId}:${playerId}`, next.districts[districtId].stakes[playerId] ?? 0,
+  ])));
   const dealOutcomes = evaluateDeals(next);
   const shields = new Map<string, number>();
   const successes = new Map<PlayerId, boolean>();
@@ -177,8 +181,20 @@ export function resolveOperations(state: GameState): GameState {
   for (const playerId of next.seatOrder) {
     const success = successes.get(playerId) ?? false;
     if (success) next.players[playerId]!.successfulOperationRounds.push(next.round);
-    next.revealLog.push({ round: next.round, playerId, cardType: next.players[playerId]!.draftedCard!.type,
-      successful: success, automatic: next.players[playerId]!.operation?.automatic ?? false });
+    const operation = next.players[playerId]!.operation!;
+    const cardType = next.players[playerId]!.draftedCard!.type;
+    const stakeSubject = cardType === "sabotage" ? operation.targetPlayerId : playerId;
+    const stakeDelta = operation.districtId && stakeSubject
+      ? (next.districts[operation.districtId].stakes[stakeSubject] ?? 0) - (stakesBefore[`${operation.districtId}:${stakeSubject}`] ?? 0)
+      : undefined;
+    next.revealLog.push({ round: next.round, playerId, cardType, successful: success,
+      automatic: operation.automatic ?? false, ...(operation.districtId ? { districtId: operation.districtId } : {}),
+      ...(operation.targetPlayerId ? { targetPlayerId: operation.targetPlayerId } : {}),
+      ...(stakeDelta !== undefined ? { stakeDelta } : {}),
+      influenceDelta: next.players[playerId]!.influence - (influenceBefore[playerId] ?? 0),
+      betrayed: cardType === "double-cross" && Boolean(operation.dealId),
+      ...(operation.districtId ? { ownerId: next.districts[operation.districtId].ownerId } : {}),
+    });
   }
   next.phase = "reveal";
   next.stateVersion += 1;

@@ -172,7 +172,7 @@ describe("authoritative multiplayer server", () => {
       && client.publicState.game.phase === "negotiation" && client.publicState.game.round === 1));
   });
 
-  it("keeps private missions and deals off the public channel", async () => {
+  it("keeps missions, deals, and direct messages private and server-authorized", async () => {
     const { url } = await harness();
     const host = await createRoom(url, "Host Boss");
     const guest = await joinRoom(url, host.roomCode, "Guest Boss");
@@ -197,6 +197,18 @@ describe("authoritative multiplayer server", () => {
     await eventually(() => host.privateState.deals.length === 1 && guest.privateState.deals.length === 1);
     expect(outsider.privateState.deals).toEqual([]);
     expect(JSON.stringify(host.publicState)).not.toContain(host.privateState.deals[0].id);
+
+    const direct = await emitAck<any>(host.socket, "message:sendPrivate", {
+      commandId: commandId(), expectedStateVersion: version(host), recipientId: guest.playerId, body: "Meet at the docks.",
+    });
+    expect(direct.ok).toBe(true);
+    await eventually(() => host.privateState.privateMessages.length === 1 && guest.privateState.privateMessages.length === 1);
+    expect(outsider.privateState.privateMessages).toEqual([]);
+    expect(JSON.stringify(host.publicState)).not.toContain("Meet at the docks.");
+    const invalid = await emitAck<any>(outsider.socket, "message:sendPrivate", {
+      commandId: commandId(), expectedStateVersion: version(outsider), recipientId: outsider.playerId, body: "invalid",
+    });
+    expect(invalid.error.code).toBe("INVALID_TARGET");
   });
 
   it("returns cached acknowledgements for duplicates and rejects stale versions", async () => {

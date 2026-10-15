@@ -53,17 +53,29 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await host.getByRole("button", { name: "Begin takeover" }).click();
   await expect(host.getByRole("heading", { name: "Make your promises" })).toBeVisible();
   await expect(guest.getByRole("heading", { name: "Make your promises" })).toBeVisible();
-  await expect(host.locator(".objective-panel article")).toHaveCount(3);
-  await expect(guest.locator(".objective-panel article")).toHaveCount(3);
+  await expect(host.locator(".objective-panel .objective-item")).toHaveCount(3);
+  await guest.getByRole("button", { name: "Missions" }).click();
+  await expect(guest.locator(".objective-panel .objective-item")).toHaveCount(3);
+  await guest.getByRole("button", { name: "Close objectives" }).click();
 
   expect(await guest.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  await guest.getByRole("button", { name: "City" }).click();
   await expect(guest.locator(".map-shell")).toBeVisible();
-  await guest.getByRole("button", { name: "Action" }).click();
+  expect(await guest.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
+
+  await guest.getByRole("button", { name: "The Wire" }).click();
+  await expect(guest.getByRole("tab", { name: "Public" })).toHaveAttribute("aria-selected", "true");
+  await host.getByRole("tab", { name: "Private" }).click();
+  await host.getByRole("textbox", { name: "Private message" }).fill("The docks are quiet tonight.");
+  await host.getByRole("button", { name: "Send message" }).click();
+  await guest.getByRole("tab", { name: "Private" }).click();
+  await expect(guest.getByText("The docks are quiet tonight.")).toBeVisible();
+  await guest.getByRole("button", { name: "Close wire" }).click();
 
   await guest.reload();
   await expect(guest.getByRole("heading", { name: "Make your promises" })).toBeVisible();
-  await expect(guest.locator(".objective-panel article")).toHaveCount(3);
+  await guest.getByRole("button", { name: "Missions" }).click();
+  await expect(guest.locator(".objective-panel .objective-item")).toHaveCount(3);
+  await guest.getByRole("button", { name: "Close objectives" }).click();
 
   await Promise.all([
     host.getByRole("button", { name: "Lock in & continue" }).click(),
@@ -76,12 +88,12 @@ test("two isolated browser contexts play a contested simultaneous round and reco
     host.locator(".action-card").first().click(),
     guest.locator(".action-card").first().click(),
   ]);
-  await expect(host.getByText("Hidden operation", { exact: true })).toBeVisible();
-  await expect(guest.getByText("Hidden operation", { exact: true })).toBeVisible();
+  await expect(host.getByRole("button", { name: "Deploy operation" })).toBeVisible();
+  await expect(guest.getByRole("button", { name: "Deploy operation" })).toBeVisible();
 
   await Promise.all([
-    host.getByRole("button", { name: "Lock hidden move" }).click(),
-    guest.getByRole("button", { name: "Lock hidden move" }).click(),
+    host.getByRole("button", { name: "Deploy operation" }).click(),
+    guest.getByRole("button", { name: "Deploy operation" }).click(),
   ]);
   await expect(host.getByRole("heading", { name: "Operations revealed" })).toBeVisible();
   await expect(guest.getByRole("heading", { name: "Operations revealed" })).toBeVisible();

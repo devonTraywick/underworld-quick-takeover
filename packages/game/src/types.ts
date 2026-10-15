@@ -66,6 +66,12 @@ export interface RevealEntry {
   cardType: CardInstance["type"];
   successful: boolean;
   automatic: boolean;
+  districtId?: DistrictId;
+  targetPlayerId?: PlayerId;
+  stakeDelta?: number;
+  influenceDelta: number;
+  betrayed: boolean;
+  ownerId?: PlayerId | null;
 }
 
 export interface PlayerInput {

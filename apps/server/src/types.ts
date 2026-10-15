@@ -34,6 +34,10 @@ export interface ChatEntry {
   createdAt: number;
 }
 
+export interface PrivateMessageEntry extends ChatEntry {
+  recipientId: PlayerId;
+}
+
 export interface RoomRecord {
   id: string;
   code: string;
@@ -48,6 +52,7 @@ export interface RoomRecord {
   version: number;
   processedCommands: Record<string, StoredAck>;
   chats: ChatEntry[];
+  privateMessages: PrivateMessageEntry[];
   createdAt: number;
   expiresAt: number;
 }
