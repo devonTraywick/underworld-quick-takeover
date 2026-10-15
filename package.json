@@ -11,6 +11,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "start": "npm run db:migrate && npm run start:server",
+    "postinstall": "npm run db:generate",
     "build:web": "node node_modules/next/dist/bin/next build apps/web",
     "start:server": "node node_modules/tsx/dist/cli.mjs apps/server/src/main.ts",
     "db:generate": "node node_modules/prisma/build/index.js generate --schema apps/server/prisma/schema.prisma",
@@ -27,8 +29,6 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "prisma": "6.12.0",
-    "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^5.0.5"
   },
@@ -38,10 +38,12 @@
     "motion": "^12.23.0",
     "next": "^16.0.0",
     "pg": "^8.16.0",
+    "prisma": "6.12.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "socket.io": "^4.8.0",
     "socket.io-client": "^4.8.0",
+    "tsx": "^4.20.0",
     "zod": "^4.1.0"
   }
 }

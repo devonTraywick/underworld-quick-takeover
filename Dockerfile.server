@@ -10,6 +10,7 @@ COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/game/package.json packages/game/package.json
 COPY packages/shared/package.json packages/shared/package.json
+COPY apps/server/prisma apps/server/prisma
 
 RUN npm ci --include=dev
 
