@@ -1,4 +1,4 @@
-# Empire of Sin: Quick Takeover — Phase 0 Build Plan
+# Underworld: Quick Takeover — Phase 0 Build Plan
 
 Status: proposed for approval (2026-10-15)
 

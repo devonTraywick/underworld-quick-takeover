@@ -67,9 +67,9 @@ export default function Home() {
     <Onboarding />
     <div className="entry-ambient" aria-hidden="true"><i /><i /><i /></div>
     <section className="brand-block">
-      <div className="brand-seal"><span>E·S</span></div>
+      <div className="brand-seal"><span>U·Q</span></div>
       <p className="eyebrow">A five-round struggle for the city</p>
-      <h1><span>Empire of Sin</span>Quick Takeover</h1>
+      <h1><span>Underworld</span>Quick Takeover</h1>
       <p className="entry-copy">Draft in secret. Make dangerous promises. Own the night before it owns you.</p>
       <div className="feature-line"><span>2–8 players</span><i /><span>5–8 minutes</span><i /><span>No account</span></div>
     </section>
@@ -93,7 +93,7 @@ export default function Home() {
   return <main className="game-page">
     <Onboarding />
     <header className="game-header">
-      <div className="compact-brand"><div className="brand-seal small"><span>E·S</span></div><div><span>Empire of Sin</span><b>Quick Takeover</b></div></div>
+      <div className="compact-brand"><div className="brand-seal small"><span>U·Q</span></div><div><span>Underworld</span><b>Quick Takeover</b></div></div>
       <div className="round-display"><span>Round</span><b>{publicGame.round}<em>/5</em></b></div>
       <div className="phase-display"><span>{publicGame.phase}</span>{countdown !== null && <b className={countdown < 5_000 ? "urgent" : ""}>{Math.ceil(countdown / 1000)}s</b>}</div>
       <div className="roster-strip" aria-label="Player roster">{publicGame.players.map((player) => <div key={player.id} className={player.id === me?.id ? "current" : ""}><span className={`boss-avatar boss-${player.seat}`} /><b>{player.nickname}</b><em>{player.influence}</em></div>)}</div>
@@ -129,7 +129,7 @@ function Lobby({ state, playerId, busy, error, onStart, onLeave }: { state: Publ
   const joinUrl = typeof window === "undefined" ? "" : window.location.href;
   return <main className="lobby-page">
     <Onboarding />
-    <header className="lobby-brand"><div className="brand-seal"><span>E·S</span></div><div><p className="eyebrow">Private table</p><h1>Gather the families</h1></div></header>
+    <header className="lobby-brand"><div className="brand-seal"><span>U·Q</span></div><div><p className="eyebrow">Private table</p><h1>Gather the families</h1></div></header>
     <section className="room-code-card"><span>Room code</span><strong>{state.room.code}</strong><button onClick={() => navigator.clipboard.writeText(joinUrl)}>Copy invite link</button></section>
     <section className="lobby-table panel"><header><div><span className="eyebrow">The guest list</span><h2>{state.room.players.length} of 8 syndicates</h2></div><span className="live-pill">Room open</span></header>
       <div className="player-list">{state.room.players.map((player, index) => <article key={player.id}><i style={{ background: FACTIONS[index] }} /><div><b>{player.nickname}</b><span>{player.id === state.room.hostPlayerId ? "Host · " : ""}{player.connected ? "At the table" : "Reconnecting"}</span></div><em>{String(index + 1).padStart(2, "0")}</em></article>)}</div>

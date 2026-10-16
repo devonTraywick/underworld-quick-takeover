@@ -24,7 +24,7 @@ Completed October 15, 2026.
 
 ## Generated asset
 
-- `apps/web/public/og.png` (1536 × 1024) was generated with the built-in image generator from this direction: a cinematic Luxury Noir social card centered on a stylized Art Deco city map, using midnight black, antique gold, burgundy, ivory, and teal, with the title “EMPIRE OF SIN — QUICK TAKEOVER” and tagline “DRAFT. DEAL. BETRAY. CONTROL THE CITY.”
+- `apps/web/public/og.png` (1536 × 1024) was generated with the built-in image generator from this direction: a cinematic Luxury Noir social card centered on a stylized Art Deco city map, using midnight black, antique gold, burgundy, ivory, and teal, with the title “UNDERWORLD — QUICK TAKEOVER” and tagline “DRAFT. DEAL. BETRAY. CONTROL THE CITY.”
 
 ## Known issues and deferred work
 

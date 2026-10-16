@@ -3,17 +3,17 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000"),
-  title: "Empire of Sin: Quick Takeover",
+  title: "Underworld: Quick Takeover",
   description: "A five-round multiplayer battle for control of the city.",
   openGraph: {
-    title: "Empire of Sin: Quick Takeover",
+    title: "Underworld: Quick Takeover",
     description: "Draft. Deal. Betray. Control the city in five ruthless rounds.",
     type: "website",
-    images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Empire of Sin: Quick Takeover" }],
+    images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Underworld: Quick Takeover" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Empire of Sin: Quick Takeover",
+    title: "Underworld: Quick Takeover",
     description: "Draft. Deal. Betray. Control the city in five ruthless rounds.",
     images: ["/og.png"],
   },
