@@ -63,17 +63,12 @@ export default function Home() {
     if (code) { setRoomCode(code.toUpperCase()); setMode("join"); }
   }, []);
 
-  if (!game.publicState) return <main className="entry-page">
+  if (!game.publicState) return <main className={`entry-page ${game.busy || !game.connected ? "is-loading" : ""}`}>
     <Onboarding />
-    <div className="entry-ambient" aria-hidden="true"><i /><i /><i /></div>
-    <section className="brand-block">
-      <div className="brand-seal"><span>U·Q</span></div>
-      <p className="eyebrow">A five-round struggle for the city</p>
-      <h1><span>Underworld</span>Quick Takeover</h1>
-      <p className="entry-copy">Draft in secret. Make dangerous promises. Own the night before it owns you.</p>
-      <div className="feature-line"><span>2–8 players</span><i /><span>5–8 minutes</span><i /><span>No account</span></div>
-    </section>
+    <div className="entry-art" aria-hidden="true" />
+    <h1 className="sr-only">Underworld: Quick Takeover</h1>
     <section className="entry-card" aria-label="Enter a game room">
+      <div className="entry-card-heading"><span><b>U·Q</b></span><div><p>Private table</p><h2>Enter the underworld</h2></div></div>
       <div className="entry-tabs"><button className={mode === "create" ? "active" : ""} onClick={() => setMode("create")}>Create a room</button><button className={mode === "join" ? "active" : ""} onClick={() => setMode("join")}>Join by code</button></div>
       <form onSubmit={async (event) => { event.preventDefault(); if (mode === "create") await game.createRoom(nickname); else await game.joinRoom(roomCode, nickname); }}>
         <label>Your syndicate name<input autoFocus minLength={2} maxLength={20} value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder="The Velvet Knives" /></label>
@@ -81,7 +76,8 @@ export default function Home() {
         <button className="gold-button wide" disabled={game.busy || !game.connected || nickname.trim().length < 2 || (mode === "join" && roomCode.length !== 6)}>{!game.connected ? "Connecting…" : game.busy ? "Opening the door…" : mode === "create" ? "Claim a table" : "Enter the room"}</button>
       </form>
       {game.error && <div className="error-banner" role="alert">{game.error}</div>}
-      <p className="entry-footnote">Private room · Shareable code · Nothing to install</p>
+      <div className="entry-status"><i /><span>{!game.connected ? "Establishing a secure connection" : game.busy ? "Opening the door" : "The city is waiting"}</span></div>
+      <p className="entry-footnote">2–8 players · 5–8 minutes · No account</p>
     </section>
   </main>;
 
