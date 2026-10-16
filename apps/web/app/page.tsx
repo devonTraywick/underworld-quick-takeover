@@ -65,6 +65,7 @@ export default function Home() {
 
   if (!game.publicState) return <main className={`entry-page ${game.busy || !game.connected ? "is-loading" : ""}`}>
     <Onboarding />
+    <div className="entry-art-fill" aria-hidden="true" />
     <div className="entry-art" aria-hidden="true" />
     <h1 className="sr-only">Underworld: Quick Takeover</h1>
     <section className="entry-card" aria-label="Enter a game room">
