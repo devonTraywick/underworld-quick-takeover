@@ -84,6 +84,7 @@ function strongestDistrict(state: GameState, playerId: PlayerId): DistrictId | n
 export function resolveOperations(state: GameState): GameState {
   if (state.phase !== "operations") throw new Error("Operations can only resolve during operations phase");
   const next = structuredClone(state);
+  const ownersBefore = Object.fromEntries(next.activeDistricts.map((id) => [id, next.districts[id].ownerId]));
   for (const playerId of next.seatOrder) next.players[playerId]!.operation = normalizeChoice(next, playerId);
   const influenceBefore = Object.fromEntries(next.seatOrder.map((playerId) => [playerId, next.players[playerId]!.influence]));
   const stakesBefore = Object.fromEntries(next.activeDistricts.flatMap((districtId) => next.seatOrder.map((playerId) => [
@@ -196,7 +197,28 @@ export function resolveOperations(state: GameState): GameState {
       ...(operation.districtId ? { ownerId: next.districts[operation.districtId].ownerId } : {}),
     });
   }
-  next.phase = "reveal";
+  const operations = next.revealLog.filter((entry) => entry.round === next.round);
+  const biggestPlay = [...operations].sort((a, b) =>
+    Math.abs((b.stakeDelta ?? 0) * 2 + b.influenceDelta) - Math.abs((a.stakeDelta ?? 0) * 2 + a.influenceDelta)
+    || next.seatOrder.indexOf(a.playerId) - next.seatOrder.indexOf(b.playerId))[0];
+  next.roundHistory.push({
+    round: next.round,
+    operations: structuredClone(operations),
+    standings: next.seatOrder.map((playerId) => ({
+      playerId,
+      districts: next.activeDistricts.filter((id) => next.districts[id].ownerId === playerId).length,
+      influence: next.players[playerId]!.influence,
+      totalStake: next.activeDistricts.reduce((sum, id) => sum + (next.districts[id].stakes[playerId] ?? 0), 0),
+    })).sort((a, b) => b.districts - a.districts || b.influence - a.influence || b.totalStake - a.totalStake
+      || next.seatOrder.indexOf(a.playerId) - next.seatOrder.indexOf(b.playerId)),
+    ownershipChanges: next.activeDistricts.filter((id) => ownersBefore[id] !== next.districts[id].ownerId)
+      .map((districtId) => ({ districtId, previousOwnerId: ownersBefore[districtId] ?? null, ownerId: next.districts[districtId].ownerId })),
+    deals: next.deals.filter((deal) => deal.round === next.round && deal.outcome).map((deal) => ({
+      id: deal.id, type: deal.type, honored: deal.outcome!.breakers.length === 0, breakers: [...deal.outcome!.breakers],
+    })),
+    biggestPlayPlayerId: biggestPlay?.playerId ?? null,
+  });
+  next.phase = "cinematic-reveal";
   next.stateVersion += 1;
   return next;
 }

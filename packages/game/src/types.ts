@@ -58,6 +58,17 @@ export interface GameState {
   draft: DraftState;
   deals: Deal[];
   revealLog: RevealEntry[];
+  roundHistory: RoundSummary[];
+  endedEarly?: boolean;
+}
+
+export interface RoundSummary {
+  round: number;
+  operations: RevealEntry[];
+  standings: Array<{ playerId: PlayerId; districts: number; influence: number; totalStake: number }>;
+  ownershipChanges: Array<{ districtId: DistrictId; previousOwnerId: PlayerId | null; ownerId: PlayerId | null }>;
+  deals: Array<{ id: string; type: Deal["type"]; honored: boolean; breakers: PlayerId[] }>;
+  biggestPlayPlayerId: PlayerId | null;
 }
 
 export interface RevealEntry {

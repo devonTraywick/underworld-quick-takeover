@@ -49,6 +49,18 @@ export interface RoomRecord {
   readyPlayerIds: PlayerId[];
   rematchPlayerIds: PlayerId[];
   deadlineAt: number | null;
+  phaseStartedAt?: number | null;
+  minimumAdvanceAt?: number | null;
+  endMatchVote?: {
+    id: string;
+    createdBy: PlayerId;
+    electorate: PlayerId[];
+    approvals: PlayerId[];
+    rejections: PlayerId[];
+    expiresAt: number;
+    pausedRemainingMs: number | null;
+    pausedMinimumRemainingMs: number | null;
+  } | null;
   version: number;
   processedCommands: Record<string, StoredAck>;
   chats: ChatEntry[];

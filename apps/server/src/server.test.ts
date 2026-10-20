@@ -33,7 +33,7 @@ async function harness() {
   const repository = new MemoryRoomRepository();
   const clock = new FakeClock();
   const server = new MultiplayerServer({ repository, clock, reconnectTokenPepper: "p".repeat(32),
-    gameSeedSecret: "s".repeat(32), timerPollMs: 100_000, phaseDurations: { negotiation: 20, draft: 15, operations: 25, reveal: 10 } });
+    gameSeedSecret: "s".repeat(32), timerPollMs: 100_000, phaseDurations: { negotiation: 20, draft: 15, operations: 25, cinematicReveal: 10, results: 10, intermission: 5 } });
   const url = await server.listen();
   servers.push(server);
   return { repository, clock, server, url };
@@ -136,7 +136,7 @@ async function submitOperationsAll(clients: ClientSession[]): Promise<void> {
     expect(ack.ok).toBe(true);
     await eventually(() => clients.every((item) => version(item) >= ack.stateVersion));
   }
-  await eventually(() => clients.every((client) => client.publicState.game.phase === "reveal"));
+  await eventually(() => clients.every((client) => client.publicState.game.phase === "cinematic-reveal"));
 }
 
 describe("authoritative multiplayer server", () => {
@@ -148,7 +148,13 @@ describe("authoritative multiplayer server", () => {
       await readyAll(clients);
       await submitDraftAll(clients);
       await submitOperationsAll(clients);
+      clock.advance(12_001);
+      await server.tick();
+      await eventually(() => clients.every((client) => client.publicState.game.phase === "round-results"));
       clock.advance(11);
+      await server.tick();
+      await eventually(() => clients.every((client) => client.publicState.game.phase === "intermission"));
+      clock.advance(6);
       await server.tick();
       await eventually(() => clients.every((client) => round === 5
         ? client.publicState.room.status === "finale"
@@ -263,9 +269,60 @@ describe("authoritative multiplayer server", () => {
     clock.advance(16); await server.tick();
     await eventually(() => host.publicState.game.phase === "operations");
     clock.advance(26); await server.tick();
-    await eventually(() => host.publicState.game.phase === "reveal");
+    await eventually(() => host.publicState.game.phase === "cinematic-reveal");
     expect(host.publicState.game.revealLog).toHaveLength(2);
     expect(guest.privateState.draftedCard).not.toBeNull();
+  });
+
+  it("requires unanimous approval from two players and produces an early provisional finale", async () => {
+    const { url } = await harness();
+    const { host, guest } = await startTwoPlayerMatch(url);
+    const proposed = await emitAck<any>(host.socket, "match:endPropose", {
+      commandId: commandId(), expectedStateVersion: version(host),
+    });
+    expect(proposed.ok).toBe(true);
+    await eventually(() => guest.publicState.room.endMatchVote?.approvals.length === 1);
+    expect(host.publicState.game.phase).toBe("negotiation");
+    const approved = await emitAck<any>(guest.socket, "match:endVote", {
+      commandId: commandId(), expectedStateVersion: version(guest), approve: true,
+    });
+    expect(approved.ok).toBe(true);
+    await eventually(() => host.publicState.room.status === "finale" && guest.publicState.game.endedEarly === true);
+    expect(host.publicState.finalScore.standings).toHaveLength(2);
+    expect(host.publicState.finalObjectives.every((entry: any) => entry.objectives.length === 3)).toBe(true);
+  });
+
+  it("resumes the preserved timer after a rejected or expired end-match vote", async () => {
+    const { url, clock, server } = await harness();
+    const { host, guest } = await startTwoPlayerMatch(url);
+    const originalDeadline = host.publicState.room.deadlineAt;
+    await emitAck<any>(host.socket, "match:endPropose", { commandId: commandId(), expectedStateVersion: version(host) });
+    await eventually(() => guest.publicState.room.endMatchVote !== null);
+    const rejected = await emitAck<any>(guest.socket, "match:endVote", {
+      commandId: commandId(), expectedStateVersion: version(guest), approve: false,
+    });
+    expect(rejected.ok).toBe(true);
+    await eventually(() => host.publicState.room.endMatchVote === null);
+    expect(host.publicState.room.deadlineAt).toBe(originalDeadline);
+
+    await emitAck<any>(host.socket, "match:endPropose", { commandId: commandId(), expectedStateVersion: version(host) });
+    await eventually(() => guest.publicState.room.endMatchVote !== null);
+    clock.advance(20_001); await server.tick();
+    await eventually(() => host.publicState.room.endMatchVote === null);
+    expect(host.publicState.game.phase).toBe("negotiation");
+    expect(host.publicState.room.deadlineAt).toBe(clock.now() + 20);
+  });
+
+  it("transfers host authority deterministically after the host disconnects", async () => {
+    const { url } = await harness();
+    const { host, guest } = await startTwoPlayerMatch(url);
+    host.socket.disconnect();
+    await eventually(() => guest.publicState.room.hostPlayerId === guest.playerId);
+    const proposal = await emitAck<any>(guest.socket, "match:endPropose", {
+      commandId: commandId(), expectedStateVersion: version(guest),
+    });
+    expect(proposal.ok).toBe(true);
+    await eventually(() => guest.publicState.room.status === "finale" && guest.publicState.game.endedEarly === true);
   });
 
   it("rate limits public chat server-side", async () => {

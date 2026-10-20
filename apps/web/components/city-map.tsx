@@ -25,7 +25,7 @@ const CENTERS: Record<DistrictId, [number, number]> = {
 
 const FACTIONS = ["#C5A46A", "#9B4055", "#4E9299", "#725CA8", "#C56E45", "#6C8B58", "#D0C7B5", "#5174A4"];
 
-export function CityMap({ game, selected, onSelect }: { game: PublicGame; selected?: DistrictId; onSelect?: (id: DistrictId) => void }) {
+export function CityMap({ game, selected, onSelect }: { game: PublicGame; selected?: DistrictId | undefined; onSelect?: (id: DistrictId) => void }) {
   const playerById = new Map(game.players.map((player) => [player.id, player]));
   return (
     <div className="map-shell" aria-label="City district map">

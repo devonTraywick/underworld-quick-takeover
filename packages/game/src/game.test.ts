@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { CardType, Deal, DistrictId } from "@underworld/shared";
 import {
   advanceAfterReveal,
+  advanceToIntermission,
+  advanceToRoundResults,
   assertCardTypesExhaustive,
   beginDraft,
   createGame,
@@ -179,6 +181,8 @@ describe("privacy and complete simulations", () => {
         }
         state = resolveDraft(state);
         state = resolveOperations(state);
+        state = advanceToRoundResults(state);
+        state = advanceToIntermission(state);
         state = advanceAfterReveal(state);
       }
       expect(state.phase).toBe("finale");
@@ -207,6 +211,8 @@ describe("privacy and complete simulations", () => {
           state = resolveDraft(state);
           expect(new Set(state.seatOrder.map((id) => state.players[id]!.draftedCard!.id)).size).toBe(count);
           state = resolveOperations(state);
+          state = advanceToRoundResults(state);
+          state = advanceToIntermission(state);
           state = advanceAfterReveal(state);
         }
         const result = scoreGame(state);

@@ -5,7 +5,7 @@ const server = new MultiplayerServer({
   repository: new MemoryRoomRepository(),
   reconnectTokenPepper: "local-development-pepper-change-me-123456",
   gameSeedSecret: "local-development-seed-secret-change-123",
-  allowedOrigins: ["http://localhost:3000", "http://127.0.0.1:3000"],
+  allowedOrigins: ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3100", "http://127.0.0.1:3100"],
   logger: true,
 });
 

@@ -57,6 +57,9 @@ export default function Home() {
   const [roomCode, setRoomCode] = useState("");
   const [mode, setMode] = useState<"create" | "join">("create");
   const [mobileOverlay, setMobileOverlay] = useState<"objectives" | "wire" | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [revealDistrict, setRevealDistrict] = useState<DistrictId | undefined>();
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("room");
@@ -92,9 +95,9 @@ export default function Home() {
     <header className="game-header">
       <div className="compact-brand"><div className="brand-seal small"><span>U·Q</span></div><div><span>Underworld</span><b>Quick Takeover</b></div></div>
       <div className="round-display"><span>Round</span><b>{publicGame.round}<em>/5</em></b></div>
-      <div className="phase-display"><span>{publicGame.phase}</span>{countdown !== null && <b className={countdown < 5_000 ? "urgent" : ""}>{Math.ceil(countdown / 1000)}s</b>}</div>
+      <div className="phase-display"><span>{publicGame.phase.replaceAll("-", " ")}</span>{countdown !== null && <b className={countdown < 5_000 ? "urgent" : ""}>{Math.ceil(countdown / 1000)}s</b>}</div>
       <div className="roster-strip" aria-label="Player roster">{publicGame.players.map((player) => <div key={player.id} className={player.id === me?.id ? "current" : ""}><span className={`boss-avatar boss-${player.seat}`} /><b>{player.nickname}</b><em>{player.influence}</em></div>)}</div>
-      <div className="player-chip"><i style={{ background: FACTIONS[me?.seat ?? 0] }} /><span>{me?.nickname}<small><b className={game.connected ? "online" : "offline"}>{game.connected ? "Live" : "Reconnecting"}</b> · {me?.influence ?? 0} Influence</small></span></div>
+      <div className="player-chip"><i style={{ background: FACTIONS[me?.seat ?? 0] }} /><span>{me?.nickname}<small><b className={game.connected ? "online" : "offline"}>{game.connected ? "Live" : "Reconnecting"}</b> · {me?.influence ?? 0} Influence</small></span><button className="match-menu-trigger" onClick={() => setMenuOpen(true)} aria-label="Open match menu">☰</button></div>
     </header>
     <div className="command-center">
       <aside className={`boss-column ${mobileOverlay === "objectives" ? "mobile-open" : ""}`}>
@@ -102,7 +105,7 @@ export default function Home() {
         <section className="boss-dossier panel"><div className={`boss-portrait boss-${me?.seat ?? 0}`}><span>{me?.nickname}</span></div><div className="syndicate-meta"><span>Your syndicate</span><strong>{me?.nickname}</strong><p><b>{me?.influence ?? 0}</b> Influence · Seat {(me?.seat ?? 0) + 1}</p></div></section>
         {game.privateState && <Objectives privateState={game.privateState} game={publicGame} playerId={game.session?.playerId ?? ""} />}
       </aside>
-      <section className="map-column"><CityMap game={publicGame} /><div className="map-caption"><span>City control</span><p>Highest stake owns the district. A new tie leaves it contested.</p></div></section>
+      <section className="map-column"><CityMap game={publicGame} selected={revealDistrict} /><div className="map-caption"><span>City control</span><p>Highest stake owns the district. A new tie leaves it contested.</p></div></section>
       <aside className={`social-column ${mobileOverlay === "wire" ? "mobile-open" : ""}`}>
         <button className="mobile-close" onClick={() => setMobileOverlay(null)} aria-label="Close wire">×</button>
         <ChatPanel state={game.publicState} privateState={game.privateState} playerId={game.session?.playerId ?? ""} onSend={game.sendChat} onSendPrivate={game.sendPrivateMessage} disabled={game.busy} />
@@ -112,11 +115,15 @@ export default function Home() {
       <section className="action-dock">
         <AnimatePresence mode="wait"><motion.div key={`${publicGame.round}-${publicGame.phase}`} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}>
           <PhasePanel state={game.publicState} privateState={game.privateState} playerId={game.session?.playerId ?? ""} busy={game.busy}
-            setReady={game.setReady} submitDraft={game.submitDraft} submitOperation={game.submitOperation} voteRematch={game.voteRematch} />
+            setReady={game.setReady} submitDraft={game.submitDraft} submitOperation={game.submitOperation} voteRematch={game.voteRematch} continueRound={game.continueRound} leaveMatch={game.leaveRoom} onRevealDistrict={setRevealDistrict} />
         </motion.div></AnimatePresence>
       </section>
     </div>
     <nav className="mobile-utility" aria-label="Command panels"><button onClick={() => setMobileOverlay(mobileOverlay === "objectives" ? null : "objectives")}>Missions</button><button onClick={() => setMobileOverlay(mobileOverlay === "wire" ? null : "wire")}>The Wire</button></nav>
+    <button className="mobile-menu-trigger" onClick={() => setMenuOpen(true)} aria-label="Open match menu">☰</button>
+    {menuOpen && <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="Match menu"><section className="match-menu panel"><span className="eyebrow">Match control</span><h2>The back room</h2><button onClick={() => setMenuOpen(false)}>Resume</button><button onClick={() => { setHistoryOpen(true); setMenuOpen(false); }}>Review round history</button>{game.publicState.room.hostPlayerId === game.session?.playerId && <button className="danger-action" onClick={async () => { if (window.confirm("End the match? A 20-second vote will pause play and may produce provisional final results.")) await game.proposeEndMatch(); setMenuOpen(false); }}>End Match</button>}<button onClick={() => void game.leaveRoom()}>Leave Match</button><button onClick={() => setMenuOpen(false)}>Sound Settings · Coming soon</button><button onClick={() => { localStorage.removeItem("underworld.onboarding.complete"); window.location.reload(); }}>How to Play</button></section></div>}
+    {historyOpen && <RoundHistory game={publicGame} onClose={() => setHistoryOpen(false)} />}
+    {game.publicState.room.endMatchVote && <EndMatchVote state={game.publicState} playerId={game.session?.playerId ?? ""} busy={game.busy} vote={game.voteEndMatch} />}
     {game.error && <button className="toast" onClick={game.clearError} role="alert">{game.error}<span>Dismiss</span></button>}
   </main>;
 }
@@ -138,16 +145,18 @@ function Lobby({ state, playerId, busy, error, onStart, onLeave }: { state: Publ
   </main>;
 }
 
-function PhasePanel({ state, privateState, playerId, busy, setReady, submitDraft, submitOperation, voteRematch }: {
+function PhasePanel({ state, privateState, playerId, busy, setReady, submitDraft, submitOperation, voteRematch, continueRound, leaveMatch, onRevealDistrict }: {
   state: PublicState; privateState: PrivateState | null; playerId: string; busy: boolean;
-  setReady: (ready: boolean) => Promise<unknown>; submitDraft: (ids: string[]) => Promise<unknown>; submitOperation: (choice: object) => Promise<unknown>; voteRematch: () => Promise<unknown>;
+  setReady: (ready: boolean) => Promise<unknown>; submitDraft: (ids: string[]) => Promise<unknown>; submitOperation: (choice: object) => Promise<unknown>; voteRematch: () => Promise<unknown>; continueRound: () => Promise<unknown>; leaveMatch: () => Promise<void>; onRevealDistrict: (id: DistrictId | undefined) => void;
 }) {
   const game = state.game!;
   if (game.phase === "negotiation") return <Negotiation game={game} state={state} busy={busy} setReady={setReady} />;
   if (game.phase === "draft") return <Draft game={game} privateState={privateState} busy={busy} submit={submitDraft} />;
   if (game.phase === "operations") return <Operation game={game} privateState={privateState} playerId={playerId} busy={busy} submit={submitOperation} />;
-  if (game.phase === "reveal") return <Reveal game={game} />;
-  return <Finale state={state} playerId={playerId} busy={busy} vote={voteRematch} />;
+  if (game.phase === "cinematic-reveal") return <Reveal game={game} onDistrict={onRevealDistrict} />;
+  if (game.phase === "round-results") return <RoundResults game={game} state={state} busy={busy} continueRound={continueRound} />;
+  if (game.phase === "intermission") return <section className="phase-card panel intermission-card"><span className="eyebrow">The city holds its breath</span><h2>{game.round === 5 ? "Closing the books…" : `Round ${game.round + 1} approaches`}</h2><p>Review the map. Your next move begins shortly.</p></section>;
+  return <Finale state={state} playerId={playerId} busy={busy} vote={voteRematch} leave={leaveMatch} />;
 }
 
 function Negotiation({ game, state, busy, setReady }: { game: PublicGame; state: PublicState; busy: boolean; setReady: (ready: boolean) => Promise<unknown> }) {
@@ -190,23 +199,54 @@ function Operation({ game, privateState, playerId, busy, submit }: { game: Publi
   </section>;
 }
 
-function Reveal({ game }: { game: PublicGame }) {
-  const entries = game.revealLog.filter((entry) => entry.round === game.round);
+function Reveal({ game, onDistrict }: { game: PublicGame; onDistrict: (id: DistrictId | undefined) => void }) {
+  const entries = useMemo(() => game.revealLog.filter((entry) => entry.round === game.round), [game.revealLog, game.round]);
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [skipped, setSkipped] = useState(false);
+  useEffect(() => {
+    if (skipped || visibleCount >= entries.length) return;
+    const timer = window.setTimeout(() => setVisibleCount((count) => count + 1), visibleCount === 0 ? 900 : 1250);
+    return () => window.clearTimeout(timer);
+  }, [entries.length, skipped, visibleCount]);
+  useEffect(() => {
+    const current = entries[Math.max(0, (skipped ? entries.length : visibleCount) - 1)];
+    onDistrict(current?.districtId);
+    return () => onDistrict(undefined);
+  }, [entries, onDistrict, skipped, visibleCount]);
   const standings = [...game.players].sort((a, b) => {
     const aDistricts = game.activeDistricts.filter((id) => game.districts[id]?.ownerId === a.id).length;
     const bDistricts = game.activeDistricts.filter((id) => game.districts[id]?.ownerId === b.id).length;
     return bDistricts - aDistricts || b.influence - a.influence || a.seat - b.seat;
   });
-  return <section className="phase-card panel reveal-card"><span className="eyebrow">Round {game.round} dossier</span><h2>Operations revealed</h2><div className="reveal-list">{entries.map((entry, index) => { const player = game.players.find((candidate) => candidate.id === entry.playerId)!; const target = game.players.find((candidate) => candidate.id === entry.targetPlayerId); const card = CARD_COPY[entry.cardType]; return <motion.div key={entry.playerId} initial={{ opacity: 0, x: -28, rotateX: 25 }} animate={{ opacity: 1, x: 0, rotateX: 0 }} transition={{ delay: index * .35, duration: .38 }}><span className={`boss-avatar boss-${player.seat}`} /><span><b>{player.nickname}</b><small>{card.name}{entry.districtId ? ` · ${DISTRICT_LABELS[entry.districtId]}` : ""}{target ? ` vs ${target.nickname}` : ""}{entry.automatic ? " · automatic" : ""}</small><small className="delta-line">{entry.stakeDelta ? `${entry.stakeDelta > 0 ? "+" : ""}${entry.stakeDelta} stake` : ""}{entry.influenceDelta ? ` · ${entry.influenceDelta > 0 ? "+" : ""}${entry.influenceDelta} Influence` : ""}{entry.betrayed ? " · Betrayal" : ""}</small></span><em className={entry.successful ? "success" : "failed"}>{entry.successful ? "Success" : "Foiled"}</em></motion.div>; })}</div><div className="round-standings"><span>Public standing</span>{standings.map((player, index) => <div key={player.id}><b>{index + 1}</b><span>{player.nickname}</span><em>{game.activeDistricts.filter((id) => game.districts[id]?.ownerId === player.id).length} districts · {player.influence} inf.</em></div>)}</div></section>;
+  const shown = skipped ? entries : entries.slice(0, visibleCount);
+  return <section className="phase-card panel reveal-card"><span className="eyebrow">Round {game.round} dossier</span><h2>{visibleCount === 0 && !skipped ? "The city makes its move" : "Operations revealed"}</h2><p>{visibleCount === 0 && !skipped ? "Every order is locked. Every promise is about to be tested." : `${shown.length} of ${entries.length} operations exposed.`}</p><button className="text-button reveal-skip" onClick={() => setSkipped(true)} disabled={skipped || visibleCount >= entries.length}>Skip animation</button><div className="reveal-list"><AnimatePresence>{shown.map((entry) => { const player = game.players.find((candidate) => candidate.id === entry.playerId)!; const target = game.players.find((candidate) => candidate.id === entry.targetPlayerId); const card = CARD_COPY[entry.cardType]; return <motion.div key={entry.playerId} initial={{ opacity: 0, x: -28, rotateX: 25 }} animate={{ opacity: 1, x: 0, rotateX: 0 }} exit={{ opacity: 0 }} transition={{ duration: .38 }}><span className={`boss-avatar boss-${player.seat}`} /><span><b>{player.nickname}</b><small>{card.name}{entry.districtId ? ` · ${DISTRICT_LABELS[entry.districtId]}` : ""}{target ? ` vs ${target.nickname}` : ""}{entry.automatic ? " · automatic" : ""}</small><small className="delta-line">{entry.stakeDelta ? `${entry.stakeDelta > 0 ? "+" : ""}${entry.stakeDelta} stake` : ""}{entry.influenceDelta ? ` · ${entry.influenceDelta > 0 ? "+" : ""}${entry.influenceDelta} Influence` : ""}{entry.betrayed ? " · Betrayal" : ""}</small></span><em className={entry.successful ? "success" : "failed"}>{entry.successful ? "Success" : "Foiled"}</em></motion.div>; })}</AnimatePresence></div><div className="round-standings"><span>Public standing</span>{standings.map((player, index) => <div key={player.id}><b>{index + 1}</b><span>{player.nickname}</span><em>{game.activeDistricts.filter((id) => game.districts[id]?.ownerId === player.id).length} districts · {player.influence} inf.</em></div>)}</div></section>;
 }
 
-function Finale({ state, playerId, busy, vote }: { state: PublicState; playerId: string; busy: boolean; vote: () => Promise<unknown> }) {
+function RoundResults({ game, state, busy, continueRound }: { game: PublicGame; state: PublicState; busy: boolean; continueRound: () => Promise<unknown> }) {
+  const summary = game.roundHistory.at(-1);
+  if (!summary) return <section className="phase-card panel"><h2>Preparing the round report…</h2></section>;
+  const biggest = game.players.find((player) => player.id === summary.biggestPlayPlayerId);
+  return <section className="phase-card panel results-card"><div className="results-heading"><span className="eyebrow">Round {summary.round} report</span><h2>{biggest ? `${biggest.nickname} made the biggest play` : "The balance of power holds"}</h2><p>{summary.ownershipChanges.length ? `${summary.ownershipChanges.length} district${summary.ownershipChanges.length === 1 ? "" : "s"} changed hands.` : "No district changed hands."}</p><button className="gold-button" disabled={busy} onClick={continueRound}>Continue · {state.room.readyCount}/{game.players.length}</button></div><div className="result-columns"><div><span className="result-label">Territory</span>{summary.ownershipChanges.length ? summary.ownershipChanges.map((change) => { const owner = game.players.find((player) => player.id === change.ownerId); return <p key={change.districtId}><b>{DISTRICT_LABELS[change.districtId]}</b><small>{owner ? `Now controlled by ${owner.nickname}` : "Now contested"}</small></p>; }) : <p className="empty-copy">Borders held this round.</p>}</div><div><span className="result-label">Deals</span>{summary.deals.length ? summary.deals.map((deal) => <p key={deal.id}><b>{deal.type.replaceAll("-", " ")}</b><small className={deal.honored ? "success" : "failed"}>{deal.honored ? "Honored" : "Broken"}</small></p>) : <p className="empty-copy">No agreements came due.</p>}</div><div><span className="result-label">Standing</span>{summary.standings.map((entry, index) => { const player = game.players.find((candidate) => candidate.id === entry.playerId)!; return <p key={entry.playerId}><b>{index + 1}. {player.nickname}</b><small>{entry.districts} districts · {entry.influence} influence</small></p>; })}</div></div></section>;
+}
+
+function RoundHistory({ game, onClose }: { game: PublicGame; onClose: () => void }) {
+  return <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="Round history"><section className="history-panel panel"><header><div><span className="eyebrow">City ledger</span><h2>Round history</h2></div><button onClick={onClose} aria-label="Close history">×</button></header>{game.roundHistory.length ? game.roundHistory.map((summary) => <article key={summary.round}><h3>Round {summary.round}</h3><div>{summary.operations.map((operation) => { const player = game.players.find((candidate) => candidate.id === operation.playerId); return <p key={operation.playerId}><b>{player?.nickname}</b><span>{CARD_COPY[operation.cardType].name}{operation.districtId ? ` · ${DISTRICT_LABELS[operation.districtId]}` : ""}</span><em className={operation.successful ? "success" : "failed"}>{operation.successful ? "Success" : "Foiled"}</em></p>; })}</div></article>) : <p className="empty-copy">The first chapter is still being written.</p>}</section></div>;
+}
+
+function EndMatchVote({ state, playerId, busy, vote }: { state: PublicState; playerId: string; busy: boolean; vote: (approve: boolean) => Promise<unknown> }) {
+  const ballot = state.room.endMatchVote!;
+  const hasVoted = ballot.approvals.includes(playerId) || ballot.rejections.includes(playerId);
+  const threshold = Math.floor(ballot.electorate.length / 2) + 1;
+  return <div className="vote-backdrop" role="dialog" aria-modal="true" aria-label="Vote to end match"><motion.section className="vote-card panel" initial={{ opacity: 0, scale: .94 }} animate={{ opacity: 1, scale: 1 }}><span className="eyebrow">The table has been called</span><h2>End the match early?</h2><p>The clock is paused. A majority will close the books with provisional standings and reveal every objective.</p><div className="vote-tally"><b>{ballot.approvals.length}</b><span>of {threshold} approvals needed</span></div>{hasVoted ? <p className="locked-note">Your vote is sealed. Waiting for the table.</p> : <div className="vote-actions"><button className="outline-button" disabled={busy} onClick={() => vote(false)}>Keep playing</button><button className="gold-button" disabled={busy} onClick={() => vote(true)}>End match</button></div>}</motion.section></div>;
+}
+
+function Finale({ state, playerId, busy, vote, leave }: { state: PublicState; playerId: string; busy: boolean; vote: () => Promise<unknown>; leave: () => Promise<void> }) {
   const [voted, setVoted] = useState(false); const score = state.finalScore;
   const winners = score?.winnerIds.map((id) => state.game!.players.find((player) => player.id === id)?.nickname).join(" & ");
-  return <section className="phase-card panel finale-card"><span className="eyebrow">The books are closed</span><h2>{score?.winnerIds.includes(playerId) ? "The city is yours" : `${winners} takes the city`}</h2>
-    <div className="score-table">{score?.standings.map((entry, index) => { const player = state.game!.players.find((candidate) => candidate.id === entry.playerId)!; return <div key={entry.playerId} className={entry.playerId === playerId ? "me" : ""}><strong>{index + 1}</strong><span><b>{player.nickname}</b><small>Missions {entry.primary + entry.sides} · Districts {entry.districts} · Ops {entry.operations}</small></span><em>{entry.total}</em></div>; })}</div>
+  return <section className="phase-card panel finale-card"><span className="eyebrow">{state.game?.endedEarly ? "Early settlement · provisional ranking" : "The books are closed"}</span><h2>{score?.winnerIds.includes(playerId) ? "The city is yours" : `${winners} takes the city`}</h2>
+    <div className="score-table">{score?.standings.map((entry, index) => { const player = state.game!.players.find((candidate) => candidate.id === entry.playerId)!; return <div key={entry.playerId} className={entry.playerId === playerId ? "me" : ""}><strong>{index + 1}</strong><span><b>{player.nickname}</b><small>Missions {entry.primary + entry.sides} · {entry.controlledDistricts} districts · {entry.influence} influence · {entry.operations} ops{entry.betrayedDeals ? ` · ${entry.betrayedDeals} betrayal${entry.betrayedDeals === 1 ? "" : "s"}` : ""}</small></span><em>{entry.total}</em></div>; })}</div>
     <details className="objective-reveal"><summary>Reveal every objective</summary><div>{state.finalObjectives?.map((entry) => { const player = state.game!.players.find((candidate) => candidate.id === entry.playerId)!; return <article key={entry.playerId}><b>{player.nickname}</b>{entry.objectives.map((objective) => <span key={objective.id} className={objective.completed ? "complete" : "missed"}><i>{objective.completed ? "✓" : "×"}</i>{OBJECTIVE_NAMES[objective.id] ?? objective.id}<em>{objective.points}</em></span>)}</article>; })}</div></details>
-    <button className="gold-button wide" disabled={busy || voted} onClick={async () => { await vote(); setVoted(true); }}>{voted ? `Rematch vote cast · ${state.room.rematchVoteCount}/${state.room.players.length}` : "Demand a rematch"}</button>
+    <div className="finale-actions"><button className="gold-button" disabled={busy || voted} onClick={async () => { await vote(); setVoted(true); }}>{voted ? `Rematch vote cast · ${state.room.rematchVoteCount}/${state.room.players.length}` : "Demand a rematch"}</button><button className="outline-button" disabled={busy} onClick={leave}>Return to lobby</button></div>
   </section>;
 }
 

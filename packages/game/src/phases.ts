@@ -10,7 +10,7 @@ export function beginDraft(state: GameState): GameState {
 }
 
 export function advanceAfterReveal(state: GameState): GameState {
-  if (state.phase !== "reveal") throw new Error("Only reveal can advance");
+  if (state.phase !== "intermission") throw new Error("Only intermission can advance");
   const next = structuredClone(state);
   if (next.round === 5) {
     next.phase = "finale";
@@ -25,4 +25,14 @@ export function advanceAfterReveal(state: GameState): GameState {
   }
   next.stateVersion += 1;
   return next;
+}
+
+export function advanceToRoundResults(state: GameState): GameState {
+  if (state.phase !== "cinematic-reveal") throw new Error("Results follow the cinematic reveal");
+  const next = structuredClone(state); next.phase = "round-results"; next.stateVersion += 1; return next;
+}
+
+export function advanceToIntermission(state: GameState): GameState {
+  if (state.phase !== "round-results") throw new Error("Intermission follows round results");
+  const next = structuredClone(state); next.phase = "intermission"; next.stateVersion += 1; return next;
 }

@@ -31,3 +31,4 @@ export const dealProposeSchema = baseCommandSchema.extend({
 }).strict();
 export const dealRespondSchema = baseCommandSchema.extend({ dealId: z.string().min(1).max(80), accept: z.boolean() }).strict();
 export const dealWithdrawSchema = baseCommandSchema.extend({ dealId: z.string().min(1).max(80) }).strict();
+export const endMatchVoteSchema = baseCommandSchema.extend({ approve: z.boolean() }).strict();

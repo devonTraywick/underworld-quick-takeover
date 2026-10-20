@@ -12,7 +12,7 @@ export interface PublicGame {
   matchId: string;
   stateVersion: number;
   round: number;
-  phase: "negotiation" | "draft" | "operations" | "reveal" | "finale";
+  phase: "negotiation" | "draft" | "operations" | "cinematic-reveal" | "round-results" | "intermission" | "finale";
   activeDistricts: DistrictId[];
   districts: Partial<Record<DistrictId, { id: DistrictId; stakes: Record<PlayerId, number>; ownerId: PlayerId | null }>>;
   players: PublicPlayer[];
@@ -20,6 +20,10 @@ export interface PublicGame {
   submissionCount: number;
   revealLog: Array<{ round: number; playerId: PlayerId; cardType: CardInstance["type"]; successful: boolean; automatic: boolean;
     districtId?: DistrictId; targetPlayerId?: PlayerId; stakeDelta?: number; influenceDelta: number; betrayed: boolean; ownerId?: PlayerId | null }>;
+  roundHistory: Array<{ round: number; operations: PublicGame["revealLog"]; standings: Array<{ playerId: PlayerId; districts: number; influence: number; totalStake: number }>;
+    ownershipChanges: Array<{ districtId: DistrictId; previousOwnerId: PlayerId | null; ownerId: PlayerId | null }>;
+    deals: Array<{ id: string; type: Deal["type"]; honored: boolean; breakers: PlayerId[] }>; biggestPlayPlayerId: PlayerId | null }>;
+  endedEarly: boolean;
 }
 
 export interface PublicState {
@@ -33,12 +37,15 @@ export interface PublicState {
     readyCount: number;
     rematchVoteCount: number;
     deadlineAt: number | null;
+    phaseStartedAt: number | null;
+    minimumAdvanceAt: number | null;
+    endMatchVote: null | { id: string; createdBy: PlayerId; electorate: PlayerId[]; approvals: PlayerId[]; rejections: PlayerId[]; expiresAt: number };
     serverNow: number;
     chats: Array<{ id: string; playerId: PlayerId; nickname: string; body: string; createdAt: number }>;
   };
   game: PublicGame | null;
   finalScore: null | {
-    standings: Array<{ playerId: PlayerId; primary: number; sides: number; districts: number; operations: number; total: number }>;
+    standings: Array<{ playerId: PlayerId; primary: number; sides: number; districts: number; operations: number; total: number; influence: number; controlledDistricts: number; betrayedDeals: number }>;
     winnerIds: PlayerId[];
   };
   finalObjectives: null | Array<{

@@ -22,7 +22,7 @@ export const CARD_TYPES = [
 export type CardType = (typeof CARD_TYPES)[number];
 export type DealType = "joint-operation" | "non-aggression" | "protection-pact";
 export type DealStatus = "pending" | "accepted" | "rejected" | "withdrawn" | "resolved";
-export type Phase = "negotiation" | "draft" | "operations" | "reveal" | "finale";
+export type Phase = "negotiation" | "draft" | "operations" | "cinematic-reveal" | "round-results" | "intermission" | "finale";
 export type PlayerId = string;
 
 export interface CardInstance {

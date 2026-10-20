@@ -7,7 +7,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: "http://127.0.0.1:3100",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -15,14 +15,14 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: "node node_modules/tsx/dist/cli.mjs apps/server/src/dev-memory.ts",
-      url: "http://127.0.0.1:3001/healthz",
+      command: "PORT=3101 node node_modules/tsx/dist/cli.mjs apps/server/src/dev-memory.ts",
+      url: "http://127.0.0.1:3101/healthz",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
     {
-      command: "node node_modules/next/dist/bin/next dev apps/web --hostname 127.0.0.1",
-      url: "http://127.0.0.1:3000",
+      command: "NEXT_PUBLIC_GAME_SERVER_URL=http://127.0.0.1:3101 node node_modules/next/dist/bin/next dev apps/web --hostname 127.0.0.1 --port 3100",
+      url: "http://127.0.0.1:3100",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },

@@ -113,6 +113,9 @@ export function useGame() {
     sendChat: (body: string) => run("chat:send", { body }),
     sendPrivateMessage: (recipientId: string, body: string) => run("message:sendPrivate", { recipientId, body }),
     voteRematch: () => run("rematch:vote", {}),
+    continueRound: () => run("round:continue", {}),
+    proposeEndMatch: () => run("match:endPropose", {}),
+    voteEndMatch: (approve: boolean) => run("match:endVote", { approve }),
     leaveRoom: async () => { await run("room:leave", {}); leaveLocal(); },
     forgetSession: leaveLocal,
   };

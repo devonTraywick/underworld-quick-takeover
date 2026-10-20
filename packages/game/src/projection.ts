@@ -12,6 +12,8 @@ export interface PublicProjection {
   market: GameState["draft"]["market"];
   submissionCount: number;
   revealLog: GameState["revealLog"];
+  roundHistory: GameState["roundHistory"];
+  endedEarly: boolean;
 }
 
 export function projectPublic(state: GameState): PublicProjection {
@@ -29,6 +31,8 @@ export function projectPublic(state: GameState): PublicProjection {
     market: structuredClone(state.draft.market),
     submissionCount: Object.keys(state.draft.preferences).length,
     revealLog: structuredClone(state.revealLog),
+    roundHistory: structuredClone(state.roundHistory),
+    endedEarly: state.endedEarly ?? false,
   };
 }
 
