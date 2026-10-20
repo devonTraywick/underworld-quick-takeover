@@ -25,7 +25,7 @@ export function DealPanel({ game, privateState, playerId, disabled, propose, res
         const incoming = deal.recipientId === playerId && deal.status === "pending";
         const otherId = deal.proposerId === playerId ? deal.recipientId : deal.proposerId;
         const other = game.players.find((player) => player.id === otherId)?.nickname ?? "Unknown";
-        return <article className="deal" key={deal.id}><div><b>{DEAL_NAMES[deal.type]}</b><span>with {other}{deal.terms.districtId ? ` · ${DISTRICT_LABELS[deal.terms.districtId]}` : ""}</span></div>
+        return <article className={`deal ${incoming ? "needs-attention" : ""}`} key={deal.id}><div><b>{incoming && <i className="attention-dot" aria-hidden="true" />}{DEAL_NAMES[deal.type]}</b><span>with {other}{deal.terms.districtId ? ` · ${DISTRICT_LABELS[deal.terms.districtId]}` : ""}</span></div>
           <em className={`status status-${deal.status}`}>{deal.status}</em>
           {incoming && <div className="mini-actions"><button onClick={() => respond(deal.id, false)}>Reject</button><button onClick={() => respond(deal.id, true)}>Accept</button></div>}
           {deal.proposerId === playerId && deal.status === "pending" && <button className="link-action" onClick={() => withdraw(deal.id)}>Withdraw</button>}

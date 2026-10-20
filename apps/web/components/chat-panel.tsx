@@ -10,9 +10,12 @@ interface Props {
   onSend: (body: string) => Promise<unknown>;
   onSendPrivate: (recipientId: string, body: string) => Promise<unknown>;
   disabled: boolean;
+  unreadPublic?: number;
+  unreadPrivate?: number;
+  onChannelViewed?: (channel: "public" | "private") => void;
 }
 
-export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate, disabled }: Props) {
+export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate, disabled, unreadPublic = 0, unreadPrivate = 0, onChannelViewed }: Props) {
   const [channel, setChannel] = useState<"public" | "private">("public");
   const rivals = state.room.players.filter((player) => player.id !== playerId);
   const [recipientId, setRecipientId] = useState(rivals[0]?.id ?? "");
@@ -27,8 +30,8 @@ export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate
   return <section className="chat-panel panel">
     <header><div><span className="eyebrow">The wire</span><strong>{channel === "public" ? "Public room" : "Private line"}</strong></div><span className="secure-badge">{channel === "private" ? "Encrypted" : "Open"}</span></header>
     <div className="wire-tabs" role="tablist" aria-label="Message channel">
-      <button role="tab" aria-selected={channel === "public"} className={channel === "public" ? "active" : ""} onClick={() => setChannel("public")}>Public</button>
-      <button role="tab" aria-selected={channel === "private"} className={channel === "private" ? "active" : ""} onClick={() => setChannel("private")}>Private</button>
+      <button role="tab" aria-selected={channel === "public"} className={channel === "public" ? "active" : ""} onClick={() => { setChannel("public"); onChannelViewed?.("public"); }}>Public{unreadPublic > 0 && <b className="attention-count" aria-label={`${unreadPublic} unread public messages`}>{unreadPublic}</b>}</button>
+      <button role="tab" aria-selected={channel === "private"} className={channel === "private" ? "active" : ""} onClick={() => { setChannel("private"); onChannelViewed?.("private"); }}>Private{unreadPrivate > 0 && <b className="attention-count" aria-label={`${unreadPrivate} unread private messages`}>{unreadPrivate}</b>}</button>
     </div>
     {channel === "private" && <label className="wire-recipient">Direct line<select value={recipientId} onChange={(event) => setRecipientId(event.target.value)}>{rivals.map((player) => <option key={player.id} value={player.id}>{player.nickname}</option>)}</select></label>}
     <div className="chat-log" aria-live="polite">
