@@ -1,9 +1,9 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 async function dismissOnboarding(page: Page): Promise<void> {
-  const dialog = page.getByRole("dialog", { name: "Choose your name" });
+  const dialog = page.getByRole("dialog", { name: "Learn the takeover" });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Skip briefing" }).click();
+  await dialog.getByRole("button", { name: "Skip tutorial" }).click();
   await expect(dialog).toBeHidden();
 }
 
@@ -35,16 +35,26 @@ async function joinRoom(context: BrowserContext, roomCode: string, nickname: str
 
 test("the guided introduction is complete and skippable", async ({ page }) => {
   await page.goto("/");
-  const dialog = page.getByRole("dialog", { name: "Choose your name" });
-  await expect(dialog).toContainText("The family briefing · 1/5");
-  await dialog.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("dialog", { name: "Take the city" })).toContainText("2/5");
-  await page.getByRole("button", { name: "Skip briefing" }).click();
+  const offer = page.getByRole("dialog", { name: "Learn the takeover" });
+  await expect(offer).toContainText("without touching a live match");
+  await offer.getByRole("button", { name: "Start tutorial" }).click();
+  const dialog = page.getByRole("dialog", { name: "Welcome to the underworld" });
+  await expect(dialog).toContainText("Family briefing · 1/10");
+  await page.screenshot({ path: "test-results/tutorial-desktop.png", fullPage: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "test-results/tutorial-mobile.png", fullPage: false });
+  await dialog.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByRole("dialog", { name: "Take the city" })).toContainText("2/10");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("dialog", { name: "Welcome to the underworld" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip" }).click();
   await expect(page.getByRole("region", { name: "Enter a game room" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("two isolated browser contexts play a contested simultaneous round and reconnect", async ({ browser }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(180_000);
   const hostContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const { page: host, roomCode } = await createRoom(hostContext, "Velvet Host");
@@ -119,6 +129,25 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(host.locator(".game-page")).toHaveClass(/phase-round-results/);
   await host.screenshot({ path: "test-results/phase-results-desktop.png", fullPage: false });
   await guest.screenshot({ path: "test-results/phase-results-mobile.png", fullPage: false });
+
+  for (let round = 2; round <= 5; round += 1) {
+    await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
+    await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION", { timeout: 15_000 });
+    await Promise.all([host.getByRole("button", { name: "Lock in & continue" }).click(), guest.getByRole("button", { name: "Lock in & continue" }).click()]);
+    await expect(host.locator(".phase-guide")).toContainText("DRAFT");
+    await host.locator(".action-card").first().click(); await guest.locator(".action-card").first().click();
+    await Promise.all([host.getByRole("button", { name: "Lock in" }).click(), guest.getByRole("button", { name: "Lock in" }).click()]);
+    await expect(host.locator(".phase-guide")).toContainText("OPERATIONS");
+    await host.locator(".district").first().click(); await guest.locator(".district").first().click();
+    await Promise.all([host.getByRole("button", { name: "Deploy operation" }).click(), guest.getByRole("button", { name: "Deploy operation" }).click()]);
+    await expect(host.locator(".phase-guide")).toContainText("REVEAL");
+    await host.getByRole("button", { name: "Skip animation" }).click();
+    await guest.getByRole("button", { name: "Skip animation" }).click();
+    await expect(host.getByText(`Round ${round} report`)).toBeVisible({ timeout: 20_000 });
+  }
+  await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
+  await expect(host.locator(".phase-guide")).toContainText("FINALE", { timeout: 15_000 });
+  await expect(guest.locator(".finale-card")).toBeVisible();
 
   expect(await host.locator("body").evaluate((body) => body.textContent?.includes("Crimson Guest") ?? false)).toBe(true);
   await hostContext.close();

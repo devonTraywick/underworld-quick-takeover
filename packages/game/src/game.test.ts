@@ -7,6 +7,7 @@ import {
   assertCardTypesExhaustive,
   beginDraft,
   createGame,
+  createMarket,
   districtCount,
   draftPriority,
   projectPrivate,
@@ -58,6 +59,15 @@ describe("match setup", () => {
       expect(player.objectives.filter((objective) => objective.tier === "side")).toHaveLength(2);
     }
     expect(assertCardTypesExhaustive()).toBe(true);
+  });
+
+  it.each([2, 3, 4, 5, 6, 7, 8])("uses every action type before duplicating market cards for %i players", (count) => {
+    for (let round = 1; round <= 5; round += 1) {
+      const market = createMarket(count, round, `market-invariant-${count}`);
+      expect(new Set(market.map((card) => card.id)).size).toBe(market.length);
+      expect(new Set(market.slice(0, Math.min(market.length, 6)).map((card) => card.type)).size).toBe(Math.min(market.length, 6));
+      if (count <= 4) expect(new Set(market.map((card) => card.type)).size).toBe(market.length);
+    }
   });
 
   it("rejects invalid player counts and duplicate identities", () => {

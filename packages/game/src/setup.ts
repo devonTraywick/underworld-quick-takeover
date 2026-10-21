@@ -18,11 +18,11 @@ export function districtCount(playerCount: number): 3 | 5 | 7 {
 export function createMarket(playerCount: number, round: number, seed: string): CardInstance[] {
   const random = createRandom(`${seed}:market:${round}`);
   const size = playerCount + 2;
-  let selected = random.shuffle(SUPPLY).slice(0, size);
-  if (!selected.includes("infiltrate")) selected[selected.length - 1] = "infiltrate";
-  if (!selected.includes("fortify")) {
-    const replacement = selected.findIndex((type) => type !== "infiltrate");
-    selected[replacement < 0 ? selected.length - 1 : replacement] = "fortify";
+  const distinct = ["infiltrate", "fortify", ...random.shuffle(CARD_TYPES.filter((type) => type !== "infiltrate" && type !== "fortify"))] as const;
+  const selected = [...distinct.slice(0, Math.min(size, distinct.length))];
+  if (selected.length < size) {
+    const extras = random.shuffle(SUPPLY.filter((type, index) => SUPPLY.indexOf(type) !== index));
+    selected.push(...extras.slice(0, size - selected.length));
   }
   return selected.map((type, index) => ({ id: `r${round}-${type}-${index}`, type }));
 }
