@@ -87,14 +87,52 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(guest.locator(".map-shell")).toBeVisible();
   expect(await guest.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
 
-  await expect(guest.getByRole("tab", { name: "Public" })).toHaveAttribute("aria-selected", "true");
+  await guest.getByRole("button", { name: "Chat" }).click();
+  await expect(guest.getByRole("navigation", { name: "Negotiation workspace" })).toBeVisible();
+  await expect(guest.getByRole("button", { name: "Public" })).toHaveClass(/active/);
   await host.getByRole("tab", { name: "Private" }).click();
   await host.getByRole("textbox", { name: "Private message" }).fill("The docks are quiet tonight.");
   await host.getByRole("button", { name: "Send message" }).click();
-  await expect(guest.getByRole("tab", { name: /Private/ }).locator(".attention-count")).toHaveText("1");
-  await guest.getByRole("tab", { name: "Private" }).click();
+  await expect(guest.getByRole("navigation", { name: "Negotiation workspace" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveText("1");
+  await guest.getByRole("navigation", { name: "Negotiation workspace" }).getByRole("button", { name: /Private/ }).click();
   await expect(guest.getByText("The docks are quiet tonight.")).toBeVisible();
-  await expect(guest.getByRole("tab", { name: /Private/ }).locator(".attention-count")).toHaveCount(0);
+  await expect(guest.getByRole("navigation", { name: "Negotiation workspace" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveCount(0);
+
+  await guest.getByRole("navigation", { name: "Negotiation workspace" }).getByRole("button", { name: "Deals" }).click();
+  const guestDeals = guest.getByRole("region", { name: "Deals workspace" });
+  await expect(guestDeals).toBeVisible();
+  await expect(guest.getByRole("navigation", { name: "Negotiation workspace" })).toBeVisible();
+  await guestDeals.getByRole("button", { name: "Create Deal" }).click();
+  await expect(guestDeals).toContainText("Proposal step 1 of 4");
+  await guest.screenshot({ path: "test-results/negotiation-deals-mobile.png", fullPage: false });
+  await guestDeals.getByRole("button", { name: "Continue" }).click();
+  await guestDeals.getByRole("button", { name: /Non-Aggression/ }).click();
+  await guestDeals.getByRole("button", { name: "Continue" }).click();
+  await expect(guestDeals).toContainText("Mutual non-aggression");
+  await guestDeals.getByRole("button", { name: "Continue" }).click();
+  await guestDeals.getByRole("button", { name: "Send proposal" }).click();
+  await expect(guestDeals).toContainText("Proposal sent to Velvet Host");
+  const createDealSize = await guestDeals.getByRole("button", { name: "Create Deal" }).boundingBox();
+  expect(createDealSize?.height).toBeGreaterThanOrEqual(40);
+
+  const hostDeals = host.getByRole("region", { name: "Deals workspace" });
+  await expect(hostDeals).toContainText("New proposal received");
+  await hostDeals.getByRole("button", { name: "Accept proposal" }).click();
+  await guestDeals.getByRole("tab", { name: "Active" }).click();
+  await expect(guestDeals).toContainText("Active agreement");
+  await host.screenshot({ path: "test-results/negotiation-deals-desktop.png", fullPage: false });
+
+  await hostDeals.getByRole("button", { name: "Create Deal" }).click();
+  await hostDeals.getByRole("button", { name: "Continue" }).click();
+  await hostDeals.getByRole("button", { name: /Non-Aggression/ }).click();
+  await hostDeals.getByRole("button", { name: "Continue" }).click();
+  await hostDeals.getByRole("button", { name: "Continue" }).click();
+  await hostDeals.getByRole("button", { name: "Send proposal" }).click();
+  await expect(guestDeals).toContainText("New proposal received");
+  await guestDeals.getByRole("button", { name: "Reject proposal" }).click();
+  await expect(guestDeals).toContainText("Declined");
+  await guest.getByRole("button", { name: "Close wire" }).click();
+  await expect(guestDeals).toBeHidden();
 
   await guest.getByRole("button", { name: "Lock in & continue" }).click();
   await expect(guest.getByRole("button", { name: "Not ready yet" })).toBeVisible();
