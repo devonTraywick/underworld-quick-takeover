@@ -61,8 +61,48 @@ test("the guided introduction is complete and skippable", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
+test("mobile negotiation workspace supports private chat and a complete deal response", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const hostContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const { page: host, roomCode } = await createRoom(hostContext, "Velvet Host Family");
+  const guest = await joinRoom(guestContext, roomCode, "Crimson Guest House");
+  await host.getByRole("button", { name: /Guided Match/ }).click();
+  await host.getByRole("button", { name: "Begin takeover" }).click();
+  await waitForPhaseReady(host); await waitForPhaseReady(guest);
+
+  await guest.getByRole("button", { name: "Chat" }).click();
+  await host.getByRole("tab", { name: "Private" }).click();
+  await host.getByRole("textbox", { name: "Private message" }).fill("A private offer is waiting.");
+  await host.getByRole("button", { name: "Send message" }).click();
+  const workspace = guest.getByRole("navigation", { name: "Negotiation workspace" });
+  await expect(workspace.getByRole("button", { name: /Private/ }).locator("b")).toHaveText("1");
+  await workspace.getByRole("button", { name: /Private/ }).click();
+  await expect(guest.getByText("A private offer is waiting.")).toBeVisible();
+
+  await workspace.getByRole("button", { name: "Deals" }).click();
+  const deals = guest.getByRole("region", { name: "Deals workspace" });
+  await deals.getByRole("button", { name: "Create Deal" }).click();
+  await deals.getByRole("button", { name: "Continue" }).click();
+  await deals.getByRole("button", { name: /Non-Aggression/ }).click();
+  await deals.getByRole("button", { name: "Continue" }).click();
+  await deals.getByRole("button", { name: "Continue" }).click();
+  await deals.getByRole("button", { name: "Send proposal" }).click();
+  await expect(deals).toContainText("Proposal sent to Velvet Host Family");
+  const hostDeals = host.getByRole("region", { name: "Deals workspace" });
+  await hostDeals.getByRole("button", { name: "Accept proposal" }).click();
+  await expect(hostDeals).toContainText("agreement is now active");
+  await deals.getByRole("tab", { name: "Active" }).click();
+  await expect(deals).toContainText("Active agreement");
+  expect(await guest.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
+  const createSize = await deals.getByRole("button", { name: "Create Deal" }).boundingBox();
+  expect(createSize?.height).toBeGreaterThanOrEqual(40);
+
+  await hostContext.close(); await guestContext.close();
+});
+
 test("two isolated browser contexts play a contested simultaneous round and reconnect", async ({ browser }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(process.env.PRODUCTION_URL ? 900_000 : 300_000);
   const hostContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const { page: host, roomCode } = await createRoom(hostContext, "Velvet Host");
@@ -195,7 +235,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
 
   for (let round = 2; round <= 5; round += 1) {
     await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
-    await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION", { timeout: 15_000 });
+    await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION", { timeout: process.env.PRODUCTION_URL ? 35_000 : 15_000 });
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await Promise.all([host.getByRole("button", { name: "Lock in & continue" }).click(), guest.getByRole("button", { name: "Lock in & continue" }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("DRAFT");
