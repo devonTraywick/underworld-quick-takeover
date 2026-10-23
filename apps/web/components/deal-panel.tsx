@@ -5,6 +5,7 @@ import type { Deal, DealType, DistrictId } from "@underworld/shared";
 import { DISTRICT_LABELS } from "./city-map";
 import { dealStatusLabel } from "./deal-status";
 import type { CommandAck, PrivateState, PublicGame } from "../lib/types";
+import { playCue } from "../lib/audio";
 
 const DEAL_NAMES: Record<DealType, string> = { "joint-operation": "Joint Operation", "non-aggression": "Non-Aggression", "protection-pact": "Protection Pact" };
 const DEAL_RULES: Record<DealType, string> = {
@@ -46,7 +47,7 @@ export function DealPanel({ game, privateState, playerId, disabled, expanded = f
   const [feedback, setFeedback] = useState("");
   const previousIncoming = useRef(incomingCount);
   useEffect(() => {
-    if (incomingCount > previousIncoming.current) { setTab("incoming"); setComposing(false); setFeedback("New proposal received. Review it before negotiation ends."); }
+    if (incomingCount > previousIncoming.current) { setTab("incoming"); setComposing(false); setFeedback("New proposal received. Review it before negotiation ends."); playCue("deal-incoming"); }
     previousIncoming.current = incomingCount;
   }, [incomingCount]);
   const deals = useMemo(() => {
@@ -61,7 +62,7 @@ export function DealPanel({ game, privateState, playerId, disabled, expanded = f
   };
   const respondToDeal = async (id: string, accept: boolean) => {
     const result = await respond(id, accept) as CommandAck;
-    if (result.ok) { setFeedback(accept ? "Proposal accepted. The agreement is now active." : "Proposal rejected."); setTab(accept ? "active" : "incoming"); }
+    if (result.ok) { setFeedback(accept ? "Proposal accepted. The agreement is now active." : "Proposal rejected."); playCue(accept ? "deal-accepted" : "deal-rejected"); setTab(accept ? "active" : "incoming"); }
   };
   const cancelProposal = async (id: string) => {
     const result = await withdraw(id) as CommandAck;

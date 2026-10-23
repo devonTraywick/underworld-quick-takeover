@@ -6,14 +6,12 @@ import type { CardType, DistrictId } from "@underworld/shared";
 import type { PublicGame, PublicState } from "../lib/types";
 import { DISTRICT_LABELS } from "./city-map";
 import { CARD_GUIDE } from "../lib/game-guide";
+import { playCue } from "../lib/audio";
 
 type Event = PublicGame["cinematicEvents"][number];
 const ART: Record<CardType, number> = { infiltrate: 0, fortify: 1, sabotage: 2, "shake-down": 3, surveillance: 4, "double-cross": 5 };
 
-function cue(type: Event["type"]): void {
-  if (localStorage.getItem("underworld.sound.effects") === "muted") return;
-  try { const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext; const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.type = type === "deal-broken" || type === "stakes-removed" ? "sawtooth" : "sine"; oscillator.frequency.value = type === "district-captured" ? 196 : type === "operation-blocked" ? 92 : 280; gain.gain.setValueAtTime(.035, context.currentTime); gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + .28); oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .3); oscillator.addEventListener("ended", () => void context.close()); } catch { /* Text and motion carry the same information. */ }
-}
+function cue(type: Event["type"]): void { playCue(type === "district-captured" ? "capture" : type === "deal-broken" ? "betrayal" : type === "operation-blocked" ? "failure" : type === "operation-revealed" ? "reveal" : "success"); }
 
 function consequence(event: Event, game: PublicGame): string {
   const actor = game.players.find((player) => player.id === event.actorId)?.nickname ?? "A syndicate";

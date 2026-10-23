@@ -12,7 +12,7 @@ export interface PublicGame {
   matchId: string;
   stateVersion: number;
   round: number;
-  phase: "negotiation" | "draft" | "operations" | "cinematic-reveal" | "round-results" | "intermission" | "finale";
+  phase: "mission-briefing" | "negotiation" | "draft" | "operations" | "cinematic-reveal" | "round-results" | "intermission" | "finale";
   activeDistricts: DistrictId[];
   districts: Partial<Record<DistrictId, { id: DistrictId; stakes: Record<PlayerId, number>; ownerId: PlayerId | null }>>;
   players: PublicPlayer[];

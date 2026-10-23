@@ -41,6 +41,7 @@ import { systemClock } from "./types.js";
 const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export interface PhaseDurations {
+  missionBriefing: number;
   negotiation: number;
   draft: number;
   operations: number;
@@ -66,8 +67,8 @@ export interface MultiplayerServerOptions {
 type AckCallback = (ack: unknown) => void;
 
 const PACING: Record<"quick" | "guided", PhaseDurations> = {
-  quick: { negotiation: 25_000, draft: 25_000, operations: 30_000, introduction: 2_000, cinematicReveal: 14_000, results: 10_000, intermission: 2_000 },
-  guided: { negotiation: 45_000, draft: 35_000, operations: 45_000, introduction: 3_000, cinematicReveal: 20_000, results: 17_000, intermission: 3_000 },
+  quick: { missionBriefing: 22_000, negotiation: 25_000, draft: 25_000, operations: 30_000, introduction: 2_000, cinematicReveal: 14_000, results: 10_000, intermission: 2_000 },
+  guided: { missionBriefing: 35_000, negotiation: 45_000, draft: 35_000, operations: 45_000, introduction: 3_000, cinematicReveal: 20_000, results: 17_000, intermission: 3_000 },
 };
 
 export class MultiplayerServer {
@@ -148,9 +149,15 @@ export class MultiplayerServer {
         if (room.players.length < 2) throw commandFailure("NOT_ENOUGH_PLAYERS", "At least two players are required");
         const seed = createHmac("sha256", this.seedSecret).update(`${room.id}:${this.clock.now()}`).digest("hex");
         room.game = createGame(room.id, room.players.map((player) => ({ id: player.id, nickname: player.nickname })), seed);
+        room.game.phase = "mission-briefing";
         room.status = "active";
         room.readyPlayerIds = [];
-        this.setDecisionClock(room, this.profile(room).negotiation);
+        this.setPhaseClock(room, this.profile(room).missionBriefing);
+      }));
+      socket.on("mission:acknowledge", (payload, ack) => void this.withCommand(socket, "mission:acknowledge", baseCommandSchema, payload, ack, (room, session) => {
+        this.requirePhase(room, "mission-briefing");
+        if (!room.readyPlayerIds.includes(session.playerId)) room.readyPlayerIds.push(session.playerId);
+        if (room.players.every((player) => room.readyPlayerIds.includes(player.id))) this.scheduleCompletion(room);
       }));
       socket.on("room:setPacing", (payload, ack) => void this.withCommand(socket, "room:setPacing", pacingCommandSchema, payload, ack, (room, session, data) => {
         if (room.status !== "lobby") throw commandFailure("INVALID_PHASE", "Pacing can only change in the lobby");
@@ -263,8 +270,9 @@ export class MultiplayerServer {
         if (room.rematchPlayerIds.length === room.players.length) {
           const seed = createHmac("sha256", this.seedSecret).update(`${room.id}:rematch:${room.version}:${this.clock.now()}`).digest("hex");
           room.game = createGame(room.id, room.players.map((player) => ({ id: player.id, nickname: player.nickname })), seed);
+          room.game.phase = "mission-briefing";
           room.status = "active"; room.readyPlayerIds = []; room.rematchPlayerIds = [];
-          this.setDecisionClock(room, this.profile(room).negotiation);
+          this.setPhaseClock(room, this.profile(room).missionBriefing);
         }
       }));
       socket.on("chat:send", (payload, ack) => void this.withCommand(socket, "chat:send", chatCommandSchema, payload, ack, (room, session, data) => {
@@ -421,7 +429,10 @@ export class MultiplayerServer {
 
   private advancePhase(room: RoomRecord): void {
     const game = room.game!;
-    if (game.phase === "negotiation") {
+    if (game.phase === "mission-briefing") {
+      game.phase = "negotiation"; game.stateVersion += 1; room.readyPlayerIds = [];
+      this.setDecisionClock(room, this.profile(room).negotiation);
+    } else if (game.phase === "negotiation") {
       room.game = beginDraft(game); room.readyPlayerIds = []; this.setDecisionClock(room, this.profile(room).draft);
     } else if (game.phase === "draft") {
       room.game = resolveDraft(game); this.setDecisionClock(room, this.profile(room).operations);

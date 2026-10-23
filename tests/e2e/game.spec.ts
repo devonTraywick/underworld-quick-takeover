@@ -15,6 +15,16 @@ async function waitForPhaseReady(page: Page): Promise<void> {
   await expect(page.locator(".phase-announcement")).toBeHidden({ timeout: 5_000 });
 }
 
+async function acceptBriefings(...pages: Page[]): Promise<void> {
+  for (const page of pages) {
+    const briefing = page.getByRole("dialog", { name: "Your orders have arrived." });
+    await expect(briefing).toBeVisible();
+    await expect(briefing.locator(".mission-dossiers article")).toHaveCount(3);
+  }
+  await Promise.all(pages.map((page) => page.getByRole("button", { name: "Accept orders" }).click()));
+  await Promise.all(pages.map((page) => expect(page.getByRole("dialog", { name: "Your orders have arrived." })).toBeHidden({ timeout: 8_000 })));
+}
+
 async function createRoom(context: BrowserContext, nickname: string): Promise<{ page: Page; roomCode: string }> {
   const page = await context.newPage();
   await page.goto("/");
@@ -61,6 +71,20 @@ test("the guided introduction is complete and skippable", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
+test("invite copy confirms only after success, resets, and offers a failure fallback", async ({ context }) => {
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => undefined } });
+  });
+  const { page } = await createRoom(context, "Copy Test Family");
+  const copy = page.getByRole("button", { name: "Copy invite link" });
+  await copy.click(); await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  await expect(page.getByText("Copy invite link copied.")).toHaveText("Copy invite link copied.");
+  await expect(copy).toBeVisible({ timeout: 3_000 });
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("denied"); } } }));
+  await copy.click(); await expect(page.getByText("Couldn’t access your clipboard.")).toBeVisible();
+  await expect(page.locator(".copy-fallback input")).toHaveValue(/room=/);
+});
+
 test("mobile negotiation workspace supports private chat and a complete deal response", async ({ browser }) => {
   test.setTimeout(120_000);
   const hostContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -69,6 +93,7 @@ test("mobile negotiation workspace supports private chat and a complete deal res
   const guest = await joinRoom(guestContext, roomCode, "Crimson Guest House");
   await host.getByRole("button", { name: /Guided Match/ }).click();
   await host.getByRole("button", { name: "Begin takeover" }).click();
+  await acceptBriefings(host, guest);
   await waitForPhaseReady(host); await waitForPhaseReady(guest);
 
   await guest.getByRole("button", { name: "Chat" }).click();
@@ -110,6 +135,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
 
   await expect(host.getByRole("heading", { name: "2 of 8 syndicates" })).toBeVisible();
   await host.getByRole("button", { name: "Begin takeover" }).click();
+  await acceptBriefings(host, guest);
   await expect(host.getByRole("heading", { name: "Make your promises" })).toBeVisible();
   await expect(host.locator(".phase-announcement")).toContainText(/Back-room negotiations/i);
   await expect(guest.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");

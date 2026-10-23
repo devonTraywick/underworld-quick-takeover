@@ -33,7 +33,7 @@ async function harness() {
   const repository = new MemoryRoomRepository();
   const clock = new FakeClock();
   const server = new MultiplayerServer({ repository, clock, reconnectTokenPepper: "p".repeat(32),
-    gameSeedSecret: "s".repeat(32), timerPollMs: 100_000, phaseDurations: { negotiation: 20, draft: 15, operations: 25, cinematicReveal: 10, results: 10, intermission: 5 } });
+    gameSeedSecret: "s".repeat(32), timerPollMs: 100_000, phaseDurations: { missionBriefing: 18, negotiation: 20, draft: 15, operations: 25, cinematicReveal: 10, results: 10, intermission: 5 } });
   const url = await server.listen();
   servers.push(server);
   return { repository, clock, server, url };
@@ -101,13 +101,22 @@ function version(client: ClientSession): number {
   return client.publicState.stateVersion;
 }
 
+async function acknowledgeBriefing(clients: ClientSession[]): Promise<void> {
+  await eventually(() => clients.every((client) => client.publicState.game?.phase === "mission-briefing" && client.privateState?.objectives?.length === 3));
+  for (const client of clients) {
+    const ack = await emitAck<any>(client.socket, "mission:acknowledge", { commandId: commandId(), expectedStateVersion: version(client) });
+    expect(ack.ok).toBe(true); await eventually(() => clients.every((item) => version(item) >= ack.stateVersion));
+  }
+  await eventually(() => clients.every((client) => client.publicState.game.phase === "negotiation"));
+}
+
 async function startTwoPlayerMatch(url: string) {
   const host = await createRoom(url, "Host Boss");
   const guest = await joinRoom(url, host.roomCode, "Guest Boss");
   await eventually(() => host.publicState.room.players.length === 2);
   const ack = await emitAck<any>(host.socket, "room:start", { commandId: commandId(), expectedStateVersion: version(host) });
   expect(ack.ok).toBe(true);
-  await eventually(() => host.publicState.game?.phase === "negotiation" && guest.publicState.game?.phase === "negotiation");
+  await acknowledgeBriefing([host, guest]);
   return { host, guest };
 }
 
@@ -146,6 +155,24 @@ async function submitOperationsAll(clients: ClientSession[]): Promise<void> {
 }
 
 describe("authoritative multiplayer server", () => {
+  it("keeps briefings private, restores them on reconnect, and advances on the authoritative timeout", async () => {
+    const { url, clock, server } = await harness();
+    const host = await createRoom(url, "Briefing Host"); const guest = await joinRoom(url, host.roomCode, "Briefing Guest");
+    await eventually(() => host.publicState.room.players.length === 2);
+    const started = await emitAck<any>(host.socket, "room:start", { commandId: commandId(), expectedStateVersion: version(host) });
+    expect(started.ok).toBe(true); await eventually(() => guest.publicState.game?.phase === "mission-briefing" && guest.privateState?.objectives.length === 3);
+    expect(JSON.stringify(host.publicState)).not.toContain("objectives");
+    expect(guest.privateState.objectives.every((objective: any) => objective.points === 10 || objective.points === 4)).toBe(true);
+    const acknowledged = await emitAck<any>(host.socket, "mission:acknowledge", { commandId: commandId(), expectedStateVersion: version(host) });
+    expect(acknowledged.ok).toBe(true); await eventually(() => guest.publicState.room.readyPlayerIds.includes(host.playerId));
+    const token = guest.reconnectToken; guest.socket.disconnect(); const replacement = await connect(url);
+    const privateState = new Promise<any>((resolve) => replacement.once("state:private", resolve));
+    const resumed = await emitAck<any>(replacement, "room:resume", { roomCode: host.roomCode, playerId: guest.playerId, reconnectToken: token });
+    expect(resumed.ok).toBe(true); expect((await privateState).objectives).toHaveLength(3);
+    clock.advance(19); await server.tick(); await eventually(() => host.publicState.game.phase === "negotiation");
+    expect(host.publicState.room.readyPlayerIds).toEqual([]);
+  });
+
   it("uses the host pacing profile and protects decision time behind an authoritative introduction", async () => {
     const { url, clock, server } = await pacingHarness();
     const host = await createRoom(url, "Guided Host"); const guest = await joinRoom(url, host.roomCode, "Patient Guest");
@@ -153,7 +180,10 @@ describe("authoritative multiplayer server", () => {
     const pacing = await emitAck<any>(host.socket, "room:setPacing", { commandId: commandId(), expectedStateVersion: version(host), pacingProfile: "guided" });
     expect(pacing.ok).toBe(true); await eventually(() => guest.publicState.room.pacingProfile === "guided");
     const started = await emitAck<any>(host.socket, "room:start", { commandId: commandId(), expectedStateVersion: version(host) });
-    expect(started.ok).toBe(true); await eventually(() => guest.publicState.game?.phase === "negotiation");
+    expect(started.ok).toBe(true);
+    await eventually(() => guest.publicState.game?.phase === "mission-briefing");
+    for (const client of [host, guest]) { const ack = await emitAck<any>(client.socket, "mission:acknowledge", { commandId: commandId(), expectedStateVersion: version(client) }); expect(ack.ok).toBe(true); await eventually(() => version(host) >= ack.stateVersion && version(guest) >= ack.stateVersion); }
+    clock.advance(1_201); await server.tick(); await eventually(() => guest.publicState.game?.phase === "negotiation");
     expect(guest.publicState.room.actionAvailableAt - guest.publicState.room.phaseStartedAt).toBe(3_000);
     expect(guest.publicState.room.deadlineAt - guest.publicState.room.actionAvailableAt).toBe(45_000);
     const early = await emitAck<any>(guest.socket, "negotiation:setReady", { commandId: commandId(), expectedStateVersion: version(guest), ready: true });
@@ -200,7 +230,7 @@ describe("authoritative multiplayer server", () => {
       await eventually(() => clients.every((item) => version(item) >= ack.stateVersion));
     }
     await eventually(() => clients.every((client) => client.publicState.room.status === "active"
-      && client.publicState.game.phase === "negotiation" && client.publicState.game.round === 1));
+      && client.publicState.game.phase === "mission-briefing" && client.publicState.game.round === 1));
   });
 
   it("keeps missions, deals, and direct messages private and server-authorized", async () => {
@@ -220,6 +250,8 @@ describe("authoritative multiplayer server", () => {
     expect(guest.privateState.objectives).toHaveLength(3);
     expect(host.privateState.playerId).not.toBe(guest.privateState.playerId);
     expect(outsider.privateState.deals).toEqual([]);
+
+    await acknowledgeBriefing([host, guest, outsider]);
 
     const ack = await emitAck<any>(host.socket, "deal:propose", {
       commandId: commandId(), expectedStateVersion: version(host), recipientId: guest.playerId, type: "non-aggression",

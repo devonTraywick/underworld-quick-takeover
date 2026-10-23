@@ -9,29 +9,15 @@ import { DealPanel } from "../components/deal-panel";
 import { Onboarding } from "../components/onboarding";
 import { PhaseAnnouncement } from "../components/phase-announcement";
 import { CinematicReveal } from "../components/cinematic-reveal";
+import { CopyButton } from "../components/copy-button";
+import { MissionBriefing } from "../components/mission-briefing";
 import { useGame } from "../lib/use-game";
 import type { PrivateState, PublicGame, PublicState } from "../lib/types";
 import { CARD_GUIDE, PHASE_INSTRUCTIONS, SCORE_RULES, TIEBREAK_COPY } from "../lib/game-guide";
+import { OBJECTIVE_NAMES, objectiveExplanation } from "../lib/objectives";
+import { getAudioPreferences, playCue, setAudioPreferences, unlockAudio } from "../lib/audio";
 
 const CARD_COPY = Object.fromEntries(Object.entries(CARD_GUIDE).map(([type, card]) => [type, { name: card.name, symbol: card.symbol, copy: card.summary }])) as Record<CardType, { name: string; symbol: string; copy: string }>;
-
-const OBJECTIVE_NAMES: Record<string, string> = {
-  "city-crown": "City Crown", kingmaker: "Kingmaker", "deep-roots": "Deep Roots", untouchable: "Untouchable",
-  mastermind: "Mastermind", "shadow-broker": "Shadow Broker", "district-boss": "District Boss",
-  "cash-reserve": "Cash Reserve", "citywide-network": "Citywide Network", "wrecking-crew": "Wrecking Crew",
-  "honorable-word": "Honorable Word", "reliable-operator": "Reliable Operator", strongholds: "Strongholds",
-  "knife-in-the-dark": "Knife in the Dark",
-};
-
-const OBJECTIVE_COPY: Record<string, string> = {
-  "city-crown": "Control at least half of all active districts.", kingmaker: "Control Downtown and at least one other district.",
-  "deep-roots": "Build 4 or more stake in multiple districts.", untouchable: "Hold 7 Influence and control a district.",
-  mastermind: "Complete a successful operation in all five rounds.", "shadow-broker": "Complete three intelligence or honored-deal events and control a district.",
-  "district-boss": "Control the named district when the books close.", "cash-reserve": "Finish with at least 4 Influence.",
-  "citywide-network": "Establish stake across the required number of districts.", "wrecking-crew": "Succeed with Sabotage in two different rounds.",
-  "honorable-word": "Honor at least two accepted agreements.", "reliable-operator": "Complete successful operations in four rounds.",
-  strongholds: "Build 3 or more stake in two districts.", "knife-in-the-dark": "Betray a deal and retain at least 2 Influence.",
-};
 
 const CARD_ART_INDEX: Record<CardType, number> = { infiltrate: 0, fortify: 1, sabotage: 2, "shake-down": 3, surveillance: 4, "double-cross": 5 };
 
@@ -46,16 +32,11 @@ function useCountdown(state: PublicState | null): number | null {
   return Math.max(0, state.room.deadlineAt - (now + serverOffset.current));
 }
 
-function tone(frequency: number, duration = .16): void {
-  if (localStorage.getItem("underworld.sound.effects") === "muted") return;
-  try { const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext; const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.frequency.value = frequency; gain.gain.setValueAtTime(.035, context.currentTime); gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + duration); oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + duration); oscillator.addEventListener("ended", () => void context.close()); } catch { /* Visual confirmation remains available. */ }
-}
-
 function AttentionAudio({ state, privateState, countdown }: { state: PublicState; privateState: PrivateState | null; countdown: number | null }) {
   const warned = useRef(""); const submitted = useRef(false); const game = state.game!;
   const isSubmitted = game.phase === "draft" ? Boolean(privateState?.draftPreferences.length) : game.phase === "operations" ? Boolean(privateState?.operation) : false;
-  useEffect(() => { const key = `${game.matchId}:${game.round}:${game.phase}`; if (countdown !== null && countdown <= 5_000 && countdown > 0 && warned.current !== key) { warned.current = key; tone(392, .22); } }, [countdown, game.matchId, game.phase, game.round]);
-  useEffect(() => { if (isSubmitted && !submitted.current) tone(587, .18); submitted.current = isSubmitted; }, [isSubmitted]);
+  useEffect(() => { const key = `${game.matchId}:${game.round}:${game.phase}`; if (countdown !== null && countdown <= 5_000 && countdown > 0 && warned.current !== key) { warned.current = key; playCue("countdown"); } }, [countdown, game.matchId, game.phase, game.round]);
+  useEffect(() => { if (isSubmitted && !submitted.current) playCue(game.phase === "draft" ? "card-lock" : "deploy"); submitted.current = isSubmitted; }, [game.phase, isSubmitted]);
   return null;
 }
 
@@ -84,6 +65,7 @@ function useAttention(state: PublicState | null, privateState: PrivateState | nu
 }
 
 const PHASE_GUIDANCE: Record<PublicGame["phase"], { title: string; copy: string }> = {
+  "mission-briefing": { title: "BRIEFING — Read your orders", copy: "Review your private missions. Negotiation begins after every boss acknowledges or the briefing clock expires." },
   negotiation: { title: "NEGOTIATION — Make a deal", copy: PHASE_INSTRUCTIONS.negotiation },
   draft: { title: "DRAFT — Choose a card", copy: PHASE_INSTRUCTIONS.draft },
   operations: { title: "OPERATIONS — Pick a target", copy: PHASE_INSTRUCTIONS.operations },
@@ -121,14 +103,27 @@ export default function Home() {
   const [revealEffect, setRevealEffect] = useState<PublicGame["cinematicEvents"][number] | null>(null);
   const [operationDistrict, setOperationDistrict] = useState<DistrictId | undefined>();
   const [soundMuted, setSoundMuted] = useState(false);
+  const [effectsVolume, setEffectsVolume] = useState(.55);
+  const [missionNotice, setMissionNotice] = useState<string | null>(null);
+  const priorMissionProgress = useRef<Record<string, number> | null>(null);
   const playerId = game.session?.playerId ?? "";
   const attention = useAttention(game.publicState, game.privateState, playerId);
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("room");
     if (code) { setRoomCode(code.toUpperCase()); setMode("join"); }
-    setSoundMuted(localStorage.getItem("underworld.sound.effects") === "muted");
+    const audio = getAudioPreferences(); setSoundMuted(audio.muted); setEffectsVolume(audio.effectsVolume);
   }, []);
+  useEffect(() => { const activate = () => void unlockAudio(); window.addEventListener("pointerdown", activate, { once: true }); return () => window.removeEventListener("pointerdown", activate); }, []);
+  useEffect(() => {
+    if (!game.privateState) return;
+    const next = Object.fromEntries(game.privateState.objectives.map((objective) => [objective.id, objective.current]));
+    const advanced = game.privateState.objectives.find((objective) => priorMissionProgress.current && objective.current > (priorMissionProgress.current[objective.id] ?? 0));
+    priorMissionProgress.current = next;
+    if (!advanced) return;
+    setMissionNotice(`${OBJECTIVE_NAMES[advanced.id] ?? advanced.id}: ${advanced.current} of ${advanced.target}${advanced.completed ? " — complete" : ""}`); playCue("success");
+    const timer = window.setTimeout(() => setMissionNotice(null), 3_500); return () => window.clearTimeout(timer);
+  }, [game.privateState]);
 
   if (!game.publicState) return <main className={`entry-page ${game.busy || !game.connected ? "is-loading" : ""}`}>
     <Onboarding />
@@ -160,6 +155,7 @@ export default function Home() {
     <Onboarding />
     <PhaseAnnouncement state={game.publicState} />
     <AttentionAudio state={game.publicState} privateState={game.privateState} countdown={countdown} />
+    {publicGame.phase === "mission-briefing" && game.privateState && <MissionBriefing state={game.publicState} privateState={game.privateState} playerId={playerId} busy={game.busy} acknowledge={game.acknowledgeMissions} />}
     <header className="game-header">
       <div className="compact-brand"><div className="brand-seal small"><span>U·Q</span></div><div><span>Underworld</span><b>Quick Takeover</b></div></div>
       <div className="round-display"><span>Round</span><b>{publicGame.round}<em>/5</em></b></div>
@@ -191,10 +187,11 @@ export default function Home() {
     </div>
     <nav className={`mobile-utility ${publicGame.phase === "negotiation" ? "negotiation-utility" : ""}`} aria-label="Command panels"><button onClick={() => { setMobileOverlay(mobileOverlay === "objectives" ? null : "objectives"); attention.markObjectives(); }}>Missions{attention.objectiveProgress && <i className="attention-dot" />}</button>{publicGame.phase === "negotiation" ? <><button onClick={() => { setNegotiationView("public"); setMobileOverlay("wire"); attention.markViewed("public"); }}>Chat{attention.unreadPublic + attention.unreadPrivate > 0 && <b className="attention-count">{attention.unreadPublic + attention.unreadPrivate}</b>}</button><button className={attention.incomingDeals > 0 ? "has-alert" : ""} onClick={() => { setNegotiationView("deals"); setMobileOverlay("wire"); }}>Deals{attention.incomingDeals > 0 && <b className="attention-count">{attention.incomingDeals}</b>}</button></> : <button onClick={() => { setMobileOverlay(mobileOverlay === "wire" ? null : "wire"); attention.markViewed("public"); }}>The Wire{attention.unreadPublic + attention.unreadPrivate > 0 && <b className="attention-count">{attention.unreadPublic + attention.unreadPrivate}</b>}</button>}</nav>
     <button className="mobile-menu-trigger" onClick={() => setMenuOpen(true)} aria-label="Open match menu">☰</button>
-    {menuOpen && <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="Match menu"><section className="match-menu panel"><span className="eyebrow">Match control</span><h2>The back room</h2><button onClick={() => setMenuOpen(false)}>Resume</button><button onClick={() => { setHelpOpen(true); setMenuOpen(false); }}>How to play & score</button><button onClick={() => { setHistoryOpen(true); setMenuOpen(false); }}>Review round history</button>{game.publicState.room.hostPlayerId === game.session?.playerId && <button className="danger-action" onClick={async () => { if (window.confirm("End the match? A 20-second vote will pause play and may produce provisional final results.")) await game.proposeEndMatch(); setMenuOpen(false); }}>End Match</button>}<button onClick={() => void game.leaveRoom()}>Leave Match</button><button aria-pressed={soundMuted} onClick={() => { const next = !soundMuted; setSoundMuted(next); localStorage.setItem("underworld.sound.effects", next ? "muted" : "on"); }}>{soundMuted ? "Sound effects · Muted" : "Sound effects · On"}</button><button onClick={() => { setMenuOpen(false); window.dispatchEvent(new Event("underworld:tutorial")); }}>Replay Tutorial</button></section></div>}
+    {menuOpen && <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="Match menu"><section className="match-menu panel"><span className="eyebrow">Match control</span><h2>The back room</h2><button onClick={() => setMenuOpen(false)}>Resume</button><button onClick={() => { setHelpOpen(true); setMenuOpen(false); }}>How to play & score</button><button onClick={() => { setHistoryOpen(true); setMenuOpen(false); }}>Review round history</button>{game.publicState.room.hostPlayerId === game.session?.playerId && <button className="danger-action" onClick={async () => { if (window.confirm("End the match? A 20-second vote will pause play and may produce provisional final results.")) await game.proposeEndMatch(); setMenuOpen(false); }}>End Match</button>}<button onClick={() => void game.leaveRoom()}>Leave Match</button><button aria-pressed={soundMuted} onClick={() => { const next = !soundMuted; setSoundMuted(next); setAudioPreferences({ muted: next, effectsVolume }); if (!next) void unlockAudio(); }}>{soundMuted ? "Master sound · Muted" : "Master sound · On"}</button><label className="volume-control">Effects volume <input aria-label="Effects volume" type="range" min="0" max="100" value={Math.round(effectsVolume * 100)} onChange={(event) => { const next = Number(event.target.value) / 100; setEffectsVolume(next); setAudioPreferences({ muted: soundMuted, effectsVolume: next }); }} /></label><button onClick={() => { setMenuOpen(false); window.dispatchEvent(new Event("underworld:tutorial")); }}>Replay Tutorial</button></section></div>}
     {helpOpen && <GameHelp onClose={() => setHelpOpen(false)} />}
     {historyOpen && <RoundHistory game={publicGame} onClose={() => setHistoryOpen(false)} />}
     {game.publicState.room.endMatchVote && <EndMatchVote state={game.publicState} playerId={game.session?.playerId ?? ""} busy={game.busy} vote={game.voteEndMatch} />}
+    {missionNotice && <div className="mission-progress-toast" role="status" aria-live="polite"><span>Mission advanced</span><b>{missionNotice}</b></div>}
     {game.error && <button className="toast" onClick={game.clearError} role="alert">{game.error}<span>Dismiss</span></button>}
   </main>;
 }
@@ -205,7 +202,7 @@ function Lobby({ state, playerId, busy, error, onStart, onLeave, onPacing }: { s
   return <main className="lobby-page">
     <Onboarding />
     <header className="lobby-brand"><div className="brand-seal"><span>U·Q</span></div><div><p className="eyebrow">Private table</p><h1>Gather the families</h1></div></header>
-    <section className="room-code-card"><span>Room code</span><strong>{state.room.code}</strong><button onClick={() => navigator.clipboard.writeText(joinUrl)}>Copy invite link</button></section>
+    <section className="room-code-card"><span>Room code</span><strong>{state.room.code}</strong><div className="room-copy-actions"><CopyButton value={joinUrl} label="Copy invite link" /><CopyButton value={state.room.code} label="Copy room code" /></div></section>
     <section className="lobby-table panel"><header><div><span className="eyebrow">The guest list</span><h2>{state.room.players.length} of 8 syndicates</h2></div><span className="live-pill">Room open</span></header>
       <div className="player-list">{state.room.players.map((player, index) => <article key={player.id}><i style={{ background: FACTIONS[index] }} /><div><b>{player.nickname}</b><span>{player.id === state.room.hostPlayerId ? "Host · " : ""}{player.connected ? "At the table" : "Reconnecting"}</span></div><em>{String(index + 1).padStart(2, "0")}</em></article>)}</div>
       {Array.from({ length: Math.max(0, 2 - state.room.players.length) }).map((_, index) => <div className="waiting-seat" key={index}>Waiting for another syndicate…</div>)}
@@ -224,6 +221,7 @@ function PhasePanel({ state, privateState, playerId, busy, setReady, submitDraft
   setReady: (ready: boolean) => Promise<unknown>; submitDraft: (ids: string[]) => Promise<unknown>; submitOperation: (choice: object) => Promise<unknown>; voteRematch: () => Promise<unknown>; continueRound: () => Promise<unknown>; leaveMatch: () => Promise<void>; onRevealEffect: (event: PublicGame["cinematicEvents"][number] | null) => void; operationDistrict: DistrictId | undefined; onOperationDistrict: (id: DistrictId | undefined) => void; openHistory: () => void;
 }) {
   const game = state.game!;
+  if (game.phase === "mission-briefing") return <section className="phase-card panel"><h2>Receiving classified orders…</h2></section>;
   if (game.phase === "negotiation") return <Negotiation game={game} state={state} playerId={playerId} busy={busy} setReady={setReady} />;
   if (game.phase === "draft") return <Draft game={game} privateState={privateState} busy={busy} submit={submitDraft} />;
   if (game.phase === "operations") return <Operation game={game} privateState={privateState} playerId={playerId} busy={busy} submit={submitOperation} districtId={operationDistrict} setDistrict={onOperationDistrict} />;
@@ -245,8 +243,8 @@ function Draft({ game, privateState, busy, submit }: { game: PublicGame; private
   const [selected, setSelected] = useState<string | null>(privateState?.draftPreferences[0] ?? null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const typeCounts = game.market.reduce<Partial<Record<CardType, number>>>((counts, card) => ({ ...counts, [card.type]: (counts[card.type] ?? 0) + 1 }), {});
-  const choose = (id: string) => setSelected(id);
-  const lock = async () => { if (selected) await submit([selected, ...game.market.map((card) => card.id).filter((cardId) => cardId !== selected)]); };
+  const choose = (id: string) => { setSelected(id); playCue("card-select"); };
+  const lock = async () => { if (selected) { playCue("card-lock"); await submit([selected, ...game.market.map((card) => card.id).filter((cardId) => cardId !== selected)]); } };
   return <section className={`phase-card panel ${privateState?.draftPreferences.length ? "action-complete" : "action-required"}`}><span className="eyebrow">Blind draft</span><h2>Choose your leverage</h2><p>Your first choice is secret. Rotating priority decides collisions.</p>
     <div className="card-market">{game.market.map((card) => { const copy = CARD_COPY[card.type]; return <motion.button whileHover={{ y: -7, rotate: -1.2 }} whileTap={{ scale: .97 }} key={card.id} className={`action-card ${selected === card.id ? "selected" : ""} ${expanded === card.id ? "expanded" : ""}`} disabled={busy} onClick={() => choose(card.id)} onDoubleClick={() => setExpanded(expanded === card.id ? null : card.id)} aria-pressed={selected === card.id}>
       <span className="card-art" style={{ "--card-column": CARD_ART_INDEX[card.type] % 3, "--card-row": Math.floor(CARD_ART_INDEX[card.type] / 3) } as React.CSSProperties} /><span className="card-symbol">{copy.symbol}</span><b>{copy.name}</b>{(typeCounts[card.type] ?? 0) > 1 && <span className="market-copy">{typeCounts[card.type]} copies · unique card IDs</span>}<small>{copy.copy}</small>{expanded === card.id && <span className="card-exact"><b>Target</b> {CARD_GUIDE[card.type].target}<b>Expected benefit</b> {CARD_GUIDE[card.type].benefit}<b>Exact rule</b> {CARD_GUIDE[card.type].details}</span>}<span className="card-detail" onClick={(event) => { event.stopPropagation(); setExpanded(expanded === card.id ? null : card.id); }}>{expanded === card.id ? "Hide details" : "More details"}</span>{selected === card.id && <em>{privateState?.draftPreferences.length ? "Preference locked" : "Selected"}</em>}</motion.button>; })}</div>
@@ -278,7 +276,7 @@ function Operation({ game, privateState, playerId, busy, submit, districtId, set
     {needsRival && <label className="control-label">Target rival<select value={effectiveTargetPlayerId} disabled={noSabotageTarget} onChange={(event) => setTarget(event.target.value)}>{eligibleRivals.map((rival) => <option key={rival.id} value={rival.id}>{rival.nickname}{resolvedType === "sabotage" && districtId ? ` · ${game.districts[districtId]?.stakes[rival.id] ?? 0} stake` : ""}</option>)}{noSabotageTarget && <option value="">No rival stake in this district</option>}</select></label>}
     {noSabotageTarget && <p className="operation-warning" role="status">No rival has stake here. Choose another district, or deploy to take the automatic fallback: +1 Influence and no operation point.</p>}
     {resolvedType === "double-cross" && <label className="control-label">Agreement to betray<select value={dealId} onChange={(event) => setDeal(event.target.value)}><option value="">No deal — convert to Infiltrate</option>{deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.type.replaceAll("-", " ")}</option>)}</select></label>}
-    <button className={`gold-button wide ${(!needsDistrict || districtId) && !privateState?.operation ? "deploy-ready" : ""}`} disabled={busy || deploying || (needsDistrict && !districtId)} onClick={async () => { setDeploying(true); await new Promise((resolve) => setTimeout(resolve, 520)); await submit({ cardId: card.id, ...(needsDistrict ? { districtId } : {}), ...(needsRival && effectiveTargetPlayerId ? { targetPlayerId: effectiveTargetPlayerId } : {}), ...(resolvedType === "double-cross" && dealId ? { dealId } : {}) }); setDeploying(false); }}>{privateState?.operation ? "Update hidden move" : noSabotageTarget ? "Deploy fallback operation" : "Deploy operation"}</button>
+    <button className={`gold-button wide ${(!needsDistrict || districtId) && !privateState?.operation ? "deploy-ready" : ""}`} disabled={busy || deploying || (needsDistrict && !districtId)} onClick={async () => { setDeploying(true); playCue("deploy"); await new Promise((resolve) => setTimeout(resolve, 520)); await submit({ cardId: card.id, ...(needsDistrict ? { districtId } : {}), ...(needsRival && effectiveTargetPlayerId ? { targetPlayerId: effectiveTargetPlayerId } : {}), ...(resolvedType === "double-cross" && dealId ? { dealId } : {}) }); setDeploying(false); }}>{privateState?.operation ? "Update hidden move" : noSabotageTarget ? "Deploy fallback operation" : "Deploy operation"}</button>
     <AnimatePresence>{deploying && <motion.div className="card-flight" initial={{ x: "0vw", y: "30vh", rotate: -12, scale: .65, opacity: 0 }} animate={{ x: "-5vw", y: "-24vh", rotate: 3, scale: 1, opacity: 1 }} exit={{ scale: 1.08, opacity: 0 }} transition={{ type: "spring", stiffness: 210, damping: 20 }}><span className="card-art-mini" style={{ "--card-column": CARD_ART_INDEX[resolvedType] % 3, "--card-row": Math.floor(CARD_ART_INDEX[resolvedType] / 3) } as React.CSSProperties} /></motion.div>}</AnimatePresence>
     {privateState?.operation && <p className="locked-note">✓ Your operation is locked in. The phase advances when every boss is ready or time expires.</p>}
   </section>;
@@ -326,7 +324,7 @@ function GameHelp({ onClose }: { onClose: () => void }) {
 
 function Objectives({ privateState, game, playerId }: { privateState: PrivateState; game: PublicGame; playerId: string }) {
   const latestIntel = privateState.intelligence.at(-1);
-  return <section className="panel objective-panel"><header><span className="eyebrow">Eyes only</span><strong>Secret objectives</strong></header>{privateState.objectives.map((objective) => <details key={objective.id} className={`objective-item ${objective.completed ? "complete" : ""}`}><summary><span>{objective.tier === "primary" ? "Primary mission" : "Side objective"} · {objective.completed ? "Completed" : "In progress"}</span><b>{OBJECTIVE_NAMES[objective.id] ?? objective.id}</b><em>{objective.points} pts</em></summary><p>{OBJECTIVE_COPY[objective.id]}{objective.districtId ? ` Target: ${DISTRICT_LABELS[objective.districtId]}.` : ""}</p><div className="objective-progress"><i style={{ width: `${Math.min(100, objective.current / objective.target * 100)}%` }} /><span>{objective.current} of {objective.target} complete</span></div></details>)}
+  return <section className="panel objective-panel"><header><span className="eyebrow">Eyes only · {privateState.objectives.filter((objective) => objective.completed).length}/3 complete</span><strong>Secret objectives</strong></header>{privateState.objectives.map((objective) => <details key={objective.id} className={`objective-item ${objective.completed ? "complete" : ""}`}><summary><span>{objective.tier === "primary" ? "Primary mission" : "Side objective"} · {objective.completed ? "Completed" : "In progress"}</span><b>{OBJECTIVE_NAMES[objective.id] ?? objective.id}</b><em>{objective.points} pts</em></summary><p>{objectiveExplanation(objective)}</p><div className="objective-progress"><i style={{ width: `${Math.min(100, objective.current / objective.target * 100)}%` }} /><span>{objective.current} of {objective.target} complete</span></div></details>)}
     {latestIntel && <div className="intel-slip"><span>Surveillance · round {latestIntel.round}</span><b>{CARD_COPY[latestIntel.cardType].name}</b><p>Strongest position: {latestIntel.strongestDistrictId ? DISTRICT_LABELS[latestIntel.strongestDistrictId] : "No stake detected"}{latestIntel.hasDealWithYou ? " · Deal connected to you" : ""}</p></div>}
   </section>;
 }

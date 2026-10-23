@@ -6,7 +6,7 @@ const server = new MultiplayerServer({
   reconnectTokenPepper: "local-development-pepper-change-me-123456",
   gameSeedSecret: "local-development-seed-secret-change-123",
   allowedOrigins: ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3100", "http://127.0.0.1:3100"],
-  phaseDurations: { negotiation: 60_000, draft: 60_000, operations: 60_000, introduction: 800, cinematicReveal: 3_500, results: 3_000, intermission: 500 },
+  phaseDurations: { missionBriefing: 45_000, negotiation: 60_000, draft: 60_000, operations: 60_000, introduction: 800, cinematicReveal: 3_500, results: 3_000, intermission: 500 },
   logger: true,
 });
 
