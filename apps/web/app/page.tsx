@@ -1,13 +1,14 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CardType, DistrictId } from "@underworld/shared";
 import { ChatPanel } from "../components/chat-panel";
 import { CityMap, DISTRICT_LABELS, FACTIONS } from "../components/city-map";
 import { DealPanel } from "../components/deal-panel";
 import { Onboarding } from "../components/onboarding";
 import { PhaseAnnouncement } from "../components/phase-announcement";
+import { CinematicReveal } from "../components/cinematic-reveal";
 import { useGame } from "../lib/use-game";
 import type { PrivateState, PublicGame, PublicState } from "../lib/types";
 import { CARD_GUIDE, PHASE_INSTRUCTIONS, SCORE_RULES, TIEBREAK_COPY } from "../lib/game-guide";
@@ -116,7 +117,7 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [revealDistrict, setRevealDistrict] = useState<DistrictId | undefined>();
+  const [revealEffect, setRevealEffect] = useState<PublicGame["cinematicEvents"][number] | null>(null);
   const [operationDistrict, setOperationDistrict] = useState<DistrictId | undefined>();
   const [soundMuted, setSoundMuted] = useState(false);
   const playerId = game.session?.playerId ?? "";
@@ -153,7 +154,7 @@ export default function Home() {
   const publicGame = game.publicState.game;
   const me = publicGame.players.find((player) => player.id === game.session?.playerId);
   const needsMapTarget = publicGame.phase === "operations" && ["infiltrate", "fortify", "sabotage", "double-cross"].includes(game.privateState?.draftedCard?.type ?? "");
-  const selectedDistrict = publicGame.phase === "operations" ? (needsMapTarget ? operationDistrict : undefined) : revealDistrict;
+  const selectedDistrict = publicGame.phase === "operations" ? (needsMapTarget ? operationDistrict : undefined) : revealEffect?.districtId;
   return <main className={`game-page phase-${publicGame.phase}`}>
     <Onboarding />
     <PhaseAnnouncement state={game.publicState} />
@@ -172,7 +173,7 @@ export default function Home() {
         <section className="boss-dossier panel"><div className={`boss-portrait boss-${me?.seat ?? 0}`}><span>{me?.nickname}</span></div><div className="syndicate-meta"><span>Your syndicate</span><strong>{me?.nickname}</strong><p><b>{me?.influence ?? 0}</b> Influence · Seat {(me?.seat ?? 0) + 1}</p></div></section>
         {game.privateState && <Objectives privateState={game.privateState} game={publicGame} playerId={game.session?.playerId ?? ""} />}
       </aside>
-      <section className={`map-column ${needsMapTarget && !game.privateState?.operation ? "target-required" : ""}`}><CityMap game={publicGame} selected={selectedDistrict} onSelect={needsMapTarget ? setOperationDistrict : undefined} /><div className="map-caption"><span>{needsMapTarget ? "Select a target" : "City control"}</span><p>{needsMapTarget ? "Tap an eligible district, then deploy your operation." : "Highest stake owns the district. A new tie leaves it contested."}</p></div></section>
+      <section className={`map-column ${needsMapTarget && !game.privateState?.operation ? "target-required" : ""}`}><CityMap game={publicGame} selected={selectedDistrict} effect={revealEffect} onSelect={needsMapTarget ? setOperationDistrict : undefined} /><div className="map-caption"><span>{needsMapTarget ? "Select a target" : "City control"}</span><p>{needsMapTarget ? "Tap an eligible district, then deploy your operation." : "Highest stake owns the district. A new tie leaves it contested."}</p></div></section>
       <aside className={`social-column ${mobileOverlay === "wire" ? "mobile-open" : ""}`}>
         <button className="mobile-close" onClick={() => setMobileOverlay(null)} aria-label="Close wire">×</button>
         <ChatPanel state={game.publicState} privateState={game.privateState} playerId={playerId} onSend={game.sendChat} onSendPrivate={game.sendPrivateMessage} disabled={game.busy} unreadPublic={attention.unreadPublic} unreadPrivate={attention.unreadPrivate} onChannelViewed={attention.markViewed} />
@@ -182,7 +183,7 @@ export default function Home() {
       <section className="action-dock">
         <AnimatePresence mode="wait"><motion.div key={`${publicGame.round}-${publicGame.phase}`} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}>
           <PhasePanel state={game.publicState} privateState={game.privateState} playerId={playerId} busy={game.busy}
-            setReady={game.setReady} submitDraft={game.submitDraft} submitOperation={game.submitOperation} voteRematch={game.voteRematch} continueRound={game.continueRound} leaveMatch={game.leaveRoom} onRevealDistrict={setRevealDistrict} operationDistrict={operationDistrict} onOperationDistrict={setOperationDistrict} openHistory={() => setHistoryOpen(true)} />
+            setReady={game.setReady} submitDraft={game.submitDraft} submitOperation={game.submitOperation} voteRematch={game.voteRematch} continueRound={game.continueRound} leaveMatch={game.leaveRoom} onRevealEffect={setRevealEffect} operationDistrict={operationDistrict} onOperationDistrict={setOperationDistrict} openHistory={() => setHistoryOpen(true)} />
         </motion.div></AnimatePresence>
       </section>
     </div>
@@ -216,15 +217,15 @@ function Lobby({ state, playerId, busy, error, onStart, onLeave, onPacing }: { s
   </main>;
 }
 
-function PhasePanel({ state, privateState, playerId, busy, setReady, submitDraft, submitOperation, voteRematch, continueRound, leaveMatch, onRevealDistrict, operationDistrict, onOperationDistrict, openHistory }: {
+function PhasePanel({ state, privateState, playerId, busy, setReady, submitDraft, submitOperation, voteRematch, continueRound, leaveMatch, onRevealEffect, operationDistrict, onOperationDistrict, openHistory }: {
   state: PublicState; privateState: PrivateState | null; playerId: string; busy: boolean;
-  setReady: (ready: boolean) => Promise<unknown>; submitDraft: (ids: string[]) => Promise<unknown>; submitOperation: (choice: object) => Promise<unknown>; voteRematch: () => Promise<unknown>; continueRound: () => Promise<unknown>; leaveMatch: () => Promise<void>; onRevealDistrict: (id: DistrictId | undefined) => void; operationDistrict: DistrictId | undefined; onOperationDistrict: (id: DistrictId | undefined) => void; openHistory: () => void;
+  setReady: (ready: boolean) => Promise<unknown>; submitDraft: (ids: string[]) => Promise<unknown>; submitOperation: (choice: object) => Promise<unknown>; voteRematch: () => Promise<unknown>; continueRound: () => Promise<unknown>; leaveMatch: () => Promise<void>; onRevealEffect: (event: PublicGame["cinematicEvents"][number] | null) => void; operationDistrict: DistrictId | undefined; onOperationDistrict: (id: DistrictId | undefined) => void; openHistory: () => void;
 }) {
   const game = state.game!;
   if (game.phase === "negotiation") return <Negotiation game={game} state={state} busy={busy} setReady={setReady} />;
   if (game.phase === "draft") return <Draft game={game} privateState={privateState} busy={busy} submit={submitDraft} />;
   if (game.phase === "operations") return <Operation game={game} privateState={privateState} playerId={playerId} busy={busy} submit={submitOperation} districtId={operationDistrict} setDistrict={onOperationDistrict} />;
-  if (game.phase === "cinematic-reveal") return <Reveal game={game} onDistrict={onRevealDistrict} />;
+  if (game.phase === "cinematic-reveal") return <CinematicReveal state={state} onEffect={onRevealEffect} />;
   if (game.phase === "round-results") return <RoundResults game={game} state={state} busy={busy} continueRound={continueRound} openHistory={openHistory} />;
   if (game.phase === "intermission") return <section className="phase-card panel intermission-card"><span className="eyebrow">The city holds its breath</span><h2>{game.round === 5 ? "Closing the books…" : `Round ${game.round + 1} approaches`}</h2><p>Review the map. Your next move begins shortly.</p></section>;
   return <Finale state={state} playerId={playerId} busy={busy} vote={voteRematch} leave={leaveMatch} />;
@@ -274,37 +275,16 @@ function Operation({ game, privateState, playerId, busy, submit, districtId, set
   </section>;
 }
 
-function Reveal({ game, onDistrict }: { game: PublicGame; onDistrict: (id: DistrictId | undefined) => void }) {
-  const entries = useMemo(() => game.revealLog.filter((entry) => entry.round === game.round), [game.revealLog, game.round]);
-  const [visibleCount, setVisibleCount] = useState(0);
-  const [skipped, setSkipped] = useState(false);
-  useEffect(() => {
-    if (skipped || visibleCount >= entries.length) return;
-    const timer = window.setTimeout(() => setVisibleCount((count) => count + 1), visibleCount === 0 ? 900 : 1250);
-    return () => window.clearTimeout(timer);
-  }, [entries.length, skipped, visibleCount]);
-  useEffect(() => {
-    const current = entries[Math.max(0, (skipped ? entries.length : visibleCount) - 1)];
-    onDistrict(current?.districtId);
-    return () => onDistrict(undefined);
-  }, [entries, onDistrict, skipped, visibleCount]);
-  const standings = [...game.players].sort((a, b) => {
-    const aDistricts = game.activeDistricts.filter((id) => game.districts[id]?.ownerId === a.id).length;
-    const bDistricts = game.activeDistricts.filter((id) => game.districts[id]?.ownerId === b.id).length;
-    return bDistricts - aDistricts || b.influence - a.influence || a.seat - b.seat;
-  });
-  const shown = skipped ? entries : entries.slice(0, visibleCount);
-  return <section className="phase-card panel reveal-card"><span className="eyebrow">Round {game.round} dossier</span><h2>{visibleCount === 0 && !skipped ? "The city makes its move" : "Operations revealed"}</h2><p>{visibleCount === 0 && !skipped ? "Every order is locked. Every promise is about to be tested." : `${shown.length} of ${entries.length} operations exposed.`}</p><button className="text-button reveal-skip" onClick={() => setSkipped(true)} disabled={skipped || visibleCount >= entries.length}>Skip animation</button><div className="reveal-list"><AnimatePresence>{shown.map((entry) => { const player = game.players.find((candidate) => candidate.id === entry.playerId)!; const target = game.players.find((candidate) => candidate.id === entry.targetPlayerId); const card = CARD_COPY[entry.cardType]; return <motion.div className={`reveal-event reveal-${entry.cardType}`} key={entry.playerId} initial={{ opacity: 0, x: -28, rotateX: 65 }} animate={{ opacity: 1, x: 0, rotateX: 0 }} exit={{ opacity: 0 }} transition={{ duration: .5 }}><span className="reveal-identity"><span className={`boss-avatar boss-${player.seat}`} /><span className="reveal-card-face" style={{ "--card-column": CARD_ART_INDEX[entry.cardType] % 3, "--card-row": Math.floor(CARD_ART_INDEX[entry.cardType] / 3) } as React.CSSProperties}>{card.symbol}</span></span><span><b>{player.nickname}</b><small>{card.name}{entry.districtId ? ` · ${DISTRICT_LABELS[entry.districtId]}` : ""}{target ? ` vs ${target.nickname}` : ""}{entry.automatic ? " · automatic" : ""}</small><small className="delta-line">{entry.stakeDelta ? `${entry.stakeDelta > 0 ? "+" : ""}${entry.stakeDelta} stake` : ""}{entry.influenceDelta ? ` · ${entry.influenceDelta > 0 ? "+" : ""}${entry.influenceDelta} Influence` : ""}{entry.betrayed ? " · Deal broken" : ""}</small></span><em className={entry.successful ? "success" : "failed"}>{entry.successful ? "Success" : "Foiled"}</em></motion.div>; })}</AnimatePresence></div><div className="round-standings"><span>Public standing</span>{standings.map((player, index) => <div key={player.id}><b>{index + 1}</b><span>{player.nickname}</span><em>{game.activeDistricts.filter((id) => game.districts[id]?.ownerId === player.id).length} districts · {player.influence} inf.</em></div>)}</div></section>;
-}
-
 function RoundResults({ game, state, busy, continueRound, openHistory }: { game: PublicGame; state: PublicState; busy: boolean; continueRound: () => Promise<unknown>; openHistory: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [skip, setSkip] = useState(false);
+  const [replaying, setReplaying] = useState(false);
   const summary = game.roundHistory.at(-1);
   if (!summary) return <section className="phase-card panel"><h2>Preparing the round report…</h2></section>;
   const biggest = game.players.find((player) => player.id === summary.biggestPlayPlayerId);
   const lead = game.players.find((player) => player.id === summary.standings[0]?.playerId);
-  return <section className={`phase-card panel results-card ${expanded ? "is-expanded" : ""} ${skip ? "skip-motion" : ""}`}><div className="results-heading"><span className="eyebrow">Round {summary.round} report</span><h2>{summary.ownershipChanges[0] ? `${game.players.find((player) => player.id === summary.ownershipChanges[0]!.ownerId)?.nickname ?? "The city"} takes ${DISTRICT_LABELS[summary.ownershipChanges[0]!.districtId]}` : biggest ? `${biggest.nickname} made the biggest play` : "The balance of power holds"}</h2><p>{lead ? `${lead.nickname} leads the public standing. ` : ""}{summary.ownershipChanges.length ? `${summary.ownershipChanges.length} district${summary.ownershipChanges.length === 1 ? "" : "s"} changed hands.` : "No district changed hands."}</p><div className="result-actions"><button className="gold-button" disabled={busy} onClick={continueRound}>Continue · {state.room.readyCount}/{game.players.length}</button><button onClick={openHistory}>Review previous round</button><button onClick={() => setExpanded(!expanded)}>{expanded ? "Compact results" : "Expand full results"}</button><button onClick={() => setSkip(true)} disabled={skip}>Skip animation</button></div></div><div className="result-columns"><div><span className="result-label">Territory</span>{summary.ownershipChanges.length ? summary.ownershipChanges.map((change) => { const owner = game.players.find((player) => player.id === change.ownerId); return <p key={change.districtId}><b>{DISTRICT_LABELS[change.districtId]}</b><small>{owner ? `Now controlled by ${owner.nickname}` : "Now contested"}</small></p>; }) : <p className="empty-copy">Borders held this round.</p>}</div><div><span className="result-label">Deals</span>{summary.deals.length ? summary.deals.map((deal) => <p key={deal.id}><b>{deal.type.replaceAll("-", " ")}</b><small className={deal.honored ? "success" : "failed"}>{deal.honored ? "Honored" : "A deal has been broken"}</small></p>) : <p className="empty-copy">No agreements came due.</p>}</div><div><span className="result-label">Public standing</span>{summary.standings.map((entry, index) => { const player = game.players.find((candidate) => candidate.id === entry.playerId)!; return <p className={index === 0 ? "leader" : ""} key={entry.playerId}><b>{index === 0 ? "♛ " : ""}{index + 1}. {player.nickname}</b><small>{entry.districts} districts · {entry.influence} influence · {entry.totalStake} total stake</small></p>; })}</div></div></section>;
+  const prior = game.roundHistory.at(-2); const rankingChange = (playerId: string, index: number) => { const before = prior?.standings.findIndex((entry) => entry.playerId === playerId) ?? -1; return before < 0 || before === index ? "" : before > index ? ` ↑${before - index}` : ` ↓${index - before}`; }; const publicGain = (playerId: string, points: number) => points - (prior?.standings.find((entry) => entry.playerId === playerId)?.publicPoints ?? 0);
+  return <><section className={`phase-card panel results-card signature-results ${expanded ? "is-expanded" : ""} ${skip ? "skip-motion" : ""}`}><div className="results-heading"><span className="eyebrow">Round {summary.round} report</span><h2>{summary.deals.some((deal) => !deal.honored) ? "A deal has been broken" : summary.ownershipChanges[0] ? `${game.players.find((player) => player.id === summary.ownershipChanges[0]!.ownerId)?.nickname ?? "The city"} takes ${DISTRICT_LABELS[summary.ownershipChanges[0]!.districtId]}` : biggest ? `${biggest.nickname} made the biggest play` : "The balance of power holds"}</h2><p>{lead ? `${lead.nickname} leads the public standing. ` : ""}{summary.ownershipChanges.length ? `${summary.ownershipChanges.length} district${summary.ownershipChanges.length === 1 ? "" : "s"} changed hands.` : "No district changed hands."}</p><div className="result-actions"><button className="gold-button" disabled={busy} onClick={continueRound}>Continue · {state.room.readyCount}/{game.players.length}</button><button onClick={() => setReplaying(true)}>Replay Round</button><button onClick={() => setExpanded(!expanded)}>{expanded ? "Compact Results" : "View Full Results"}</button><button onClick={openHistory}>Round History</button></div></div><div className="result-columns"><div><span className="result-label">Territory</span>{summary.ownershipChanges.length ? summary.ownershipChanges.map((change) => { const owner = game.players.find((player) => player.id === change.ownerId); return <p key={change.districtId}><b>{DISTRICT_LABELS[change.districtId]}</b><small>{owner ? `Now controlled by ${owner.nickname}` : "Now contested"}</small></p>; }) : <p className="empty-copy">Borders held this round.</p>}</div><div><span className="result-label">Operations</span>{summary.operations.map((operation) => { const player = game.players.find((candidate) => candidate.id === operation.playerId)!; return <p key={operation.playerId}><b>{player.nickname} · {CARD_COPY[operation.cardType].name}</b><small className={operation.successful ? "success" : "failed"}>{operation.successful ? "Successful" : "Foiled"}{operation.stakeDelta ? ` · ${operation.stakeDelta > 0 ? "+" : ""}${operation.stakeDelta} stake` : ""}{operation.influenceDelta ? ` · ${operation.influenceDelta > 0 ? "+" : ""}${operation.influenceDelta} Influence` : ""}</small></p>; })}</div><div><span className="result-label">Public standing</span>{summary.standings.map((entry, index) => { const player = game.players.find((candidate) => candidate.id === entry.playerId)!; const gain = publicGain(entry.playerId, entry.publicPoints); return <p className={index === 0 ? "leader" : ""} key={entry.playerId}><b>{index === 0 ? "♛ " : ""}{index + 1}. {player.nickname}<em className="rank-change">{rankingChange(entry.playerId, index)}</em></b><small>{entry.publicPoints} public pts{gain ? ` (${gain > 0 ? "+" : ""}${gain})` : ""} · {entry.districts} districts · {entry.influence} influence</small></p>; })}</div></div></section>{replaying && <div className="replay-backdrop"><CinematicReveal state={state} replay onClose={() => setReplaying(false)} /></div>}</>;
 }
 
 function RoundHistory({ game, onClose }: { game: PublicGame; onClose: () => void }) {

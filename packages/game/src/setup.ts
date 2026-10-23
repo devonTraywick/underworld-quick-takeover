@@ -67,6 +67,7 @@ export function createGame(matchId: string, players: readonly PlayerInput[], see
     draft: { market: createMarket(players.length, 1, seed), preferences: {} },
     deals: [],
     revealLog: [],
+    cinematicEvents: [],
     roundHistory: [],
   };
 }

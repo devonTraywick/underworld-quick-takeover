@@ -21,7 +21,8 @@ export interface PublicGame {
   operationSubmissionCount: number;
   revealLog: Array<{ round: number; playerId: PlayerId; cardType: CardInstance["type"]; successful: boolean; automatic: boolean;
     districtId?: DistrictId; targetPlayerId?: PlayerId; stakeDelta?: number; influenceDelta: number; betrayed: boolean; ownerId?: PlayerId | null }>;
-  roundHistory: Array<{ round: number; operations: PublicGame["revealLog"]; standings: Array<{ playerId: PlayerId; districts: number; influence: number; totalStake: number }>;
+  cinematicEvents: Array<{ id: string; round: number; order: number; type: "operation-revealed" | "stakes-added" | "stakes-removed" | "defense-triggered" | "operation-blocked" | "influence-changed" | "deal-broken" | "district-captured" | "district-contested" | "round-complete"; visibility: "public"; actorId?: PlayerId; targetPlayerId?: PlayerId; districtId?: DistrictId; cardType?: CardInstance["type"]; before?: number; after?: number; amount?: number; previousOwnerId?: PlayerId | null; ownerId?: PlayerId | null; successful?: boolean; reason?: "no-valid-target" | "fortified-stake" }>;
+  roundHistory: Array<{ round: number; operations: PublicGame["revealLog"]; standings: Array<{ playerId: PlayerId; districts: number; influence: number; totalStake: number; publicPoints: number }>;
     ownershipChanges: Array<{ districtId: DistrictId; previousOwnerId: PlayerId | null; ownerId: PlayerId | null }>;
     deals: Array<{ id: string; type: Deal["type"]; honored: boolean; breakers: PlayerId[] }>; biggestPlayPlayerId: PlayerId | null }>;
   endedEarly: boolean;

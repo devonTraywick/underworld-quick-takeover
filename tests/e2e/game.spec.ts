@@ -133,11 +133,12 @@ test("two isolated browser contexts play a contested simultaneous round and reco
     host.getByRole("button", { name: "Deploy operation" }).click(),
     guest.getByRole("button", { name: "Deploy operation" }).click(),
   ]);
-  await expect(host.getByRole("heading", { name: "Operations revealed" })).toBeVisible();
-  await expect(guest.getByRole("heading", { name: "Operations revealed" })).toBeVisible();
-  await expect(host.locator(".reveal-list > div")).toHaveCount(2);
-  await expect(guest.locator(".reveal-list > div")).toHaveCount(2);
   await expect(host.locator(".game-page")).toHaveClass(/phase-cinematic-reveal/);
+  await waitForPhaseReady(host); await waitForPhaseReady(guest);
+  await expect(host.locator(".reveal-director")).toBeVisible();
+  await expect(guest.locator(".reveal-director")).toBeVisible();
+  await host.getByRole("button", { name: "Skip Animation" }).click(); await guest.getByRole("button", { name: "Skip Animation" }).click();
+  await expect(host.locator(".reveal-transcript p").first()).toBeVisible();
   await host.screenshot({ path: "test-results/phase-reveal-desktop.png", fullPage: false });
   await guest.screenshot({ path: "test-results/phase-reveal-mobile.png", fullPage: false });
 
@@ -145,6 +146,9 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(host.locator(".game-page")).toHaveClass(/phase-round-results/);
   await host.screenshot({ path: "test-results/phase-results-desktop.png", fullPage: false });
   await guest.screenshot({ path: "test-results/phase-results-mobile.png", fullPage: false });
+  await host.getByRole("button", { name: "Replay Round" }).click();
+  await expect(host.locator(".replay-backdrop .reveal-director")).toBeVisible();
+  await host.getByRole("button", { name: "Close Replay" }).click();
 
   for (let round = 2; round <= 5; round += 1) {
     await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
@@ -160,8 +164,9 @@ test("two isolated browser contexts play a contested simultaneous round and reco
     await host.locator(".district").first().click(); await guest.locator(".district").first().click();
     await Promise.all([host.getByRole("button", { name: "Deploy operation" }).click(), guest.getByRole("button", { name: "Deploy operation" }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("REVEAL");
-    await host.getByRole("button", { name: "Skip animation" }).click();
-    await guest.getByRole("button", { name: "Skip animation" }).click();
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
+    await host.getByRole("button", { name: "Skip Animation" }).click();
+    await guest.getByRole("button", { name: "Skip Animation" }).click();
     await expect(host.getByText(`Round ${round} report`)).toBeVisible({ timeout: 20_000 });
   }
   await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);

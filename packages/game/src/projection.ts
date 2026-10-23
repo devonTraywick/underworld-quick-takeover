@@ -14,6 +14,7 @@ export interface PublicProjection {
   submissionCount: number;
   operationSubmissionCount: number;
   revealLog: GameState["revealLog"];
+  cinematicEvents: GameState["cinematicEvents"];
   roundHistory: GameState["roundHistory"];
   endedEarly: boolean;
 }
@@ -34,6 +35,7 @@ export function projectPublic(state: GameState): PublicProjection {
     submissionCount: Object.keys(state.draft.preferences).length,
     operationSubmissionCount: state.seatOrder.filter((id) => state.players[id]!.operation !== undefined).length,
     revealLog: structuredClone(state.revealLog),
+    cinematicEvents: structuredClone(state.cinematicEvents ?? []),
     roundHistory: structuredClone(state.roundHistory),
     endedEarly: state.endedEarly ?? false,
   };

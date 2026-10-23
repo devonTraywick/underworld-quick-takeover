@@ -93,6 +93,8 @@ export function resolveOperations(state: GameState): GameState {
   const dealOutcomes = evaluateDeals(next);
   const shields = new Map<string, number>();
   const successes = new Map<PlayerId, boolean>();
+  const defended = new Set<PlayerId>();
+  const failureReasons = new Map<PlayerId, "no-valid-target" | "fortified-stake">();
 
   for (const playerId of priority(next)) {
     const player = next.players[playerId]!;
@@ -139,15 +141,17 @@ export function resolveOperations(state: GameState): GameState {
     const player = next.players[playerId]!;
     if (player.draftedCard!.type !== "sabotage") continue;
     const operation = player.operation!;
-    if (!operation.targetPlayerId) { player.influence += 1; successes.set(playerId, false); continue; }
+    if (!operation.targetPlayerId) { player.influence += 1; successes.set(playerId, false); failureReasons.set(playerId, "no-valid-target"); continue; }
     const district = next.districts[operation.districtId!];
     const targetId = operation.targetPlayerId;
     const shieldKey = `${operation.districtId}:${targetId}`;
     const shield = Math.min(shields.get(shieldKey) ?? 0, district.stakes[targetId] ?? 0);
     const removable = Math.max(0, (district.stakes[targetId] ?? 0) - shield);
     const removed = Math.min(2, removable);
+    if (shield > 0) defended.add(playerId);
     district.stakes[targetId] = Math.max(0, (district.stakes[targetId] ?? 0) - removed);
     if (removed > 0) player.successfulSabotageRounds.push(next.round);
+    else failureReasons.set(playerId, shield > 0 ? "fortified-stake" : "no-valid-target");
     successes.set(playerId, removed > 0);
   }
 
@@ -209,6 +213,7 @@ export function resolveOperations(state: GameState): GameState {
       districts: next.activeDistricts.filter((id) => next.districts[id].ownerId === playerId).length,
       influence: next.players[playerId]!.influence,
       totalStake: next.activeDistricts.reduce((sum, id) => sum + (next.districts[id].stakes[playerId] ?? 0), 0),
+      publicPoints: next.activeDistricts.filter((id) => next.districts[id].ownerId === playerId).length * 2 + new Set(next.players[playerId]!.successfulOperationRounds).size,
     })).sort((a, b) => b.districts - a.districts || b.influence - a.influence || b.totalStake - a.totalStake
       || next.seatOrder.indexOf(a.playerId) - next.seatOrder.indexOf(b.playerId)),
     ownershipChanges: next.activeDistricts.filter((id) => ownersBefore[id] !== next.districts[id].ownerId)
@@ -218,6 +223,29 @@ export function resolveOperations(state: GameState): GameState {
     })),
     biggestPlayPlayerId: biggestPlay?.playerId ?? null,
   });
+  next.cinematicEvents ??= [];
+  let eventOrder = 0;
+  const eventId = (type: string) => `r${next.round}-${String(eventOrder).padStart(3, "0")}-${type}`;
+  for (const entry of operations) {
+    next.cinematicEvents.push({ id: eventId("reveal"), round: next.round, order: eventOrder++, type: "operation-revealed", visibility: "public", actorId: entry.playerId, cardType: entry.cardType, successful: entry.successful,
+      ...(entry.districtId ? { districtId: entry.districtId } : {}), ...(entry.targetPlayerId ? { targetPlayerId: entry.targetPlayerId } : {}) });
+    const operation = next.players[entry.playerId]!.operation!;
+    if (entry.cardType === "fortify") next.cinematicEvents.push({ id: eventId("defense"), round: next.round, order: eventOrder++, type: "defense-triggered", visibility: "public", actorId: entry.playerId, cardType: entry.cardType, successful: true, ...(operation.districtId ? { districtId: operation.districtId } : {}) });
+    if (entry.cardType === "sabotage" && defended.has(entry.playerId)) next.cinematicEvents.push({ id: eventId("defense"), round: next.round, order: eventOrder++, type: "defense-triggered", visibility: "public", targetPlayerId: entry.playerId, cardType: entry.cardType, successful: entry.successful, ...(entry.targetPlayerId ? { actorId: entry.targetPlayerId } : {}), ...(entry.districtId ? { districtId: entry.districtId } : {}) });
+    if (entry.stakeDelta && entry.districtId) {
+      const subject = entry.cardType === "sabotage" ? entry.targetPlayerId! : entry.playerId;
+      const before = stakesBefore[`${entry.districtId}:${subject}`] ?? 0; const after = next.districts[entry.districtId].stakes[subject] ?? 0;
+      next.cinematicEvents.push({ id: eventId("stakes"), round: next.round, order: eventOrder++, type: entry.stakeDelta > 0 ? "stakes-added" : "stakes-removed", visibility: "public", actorId: entry.playerId, districtId: entry.districtId, cardType: entry.cardType, before, after, amount: Math.abs(entry.stakeDelta), successful: entry.successful, ...(entry.targetPlayerId ? { targetPlayerId: entry.targetPlayerId } : {}) });
+    }
+    if (entry.influenceDelta) next.cinematicEvents.push({ id: eventId("influence"), round: next.round, order: eventOrder++, type: "influence-changed", visibility: "public", actorId: entry.playerId, cardType: entry.cardType, before: influenceBefore[entry.playerId] ?? 0, after: next.players[entry.playerId]!.influence, amount: entry.influenceDelta, successful: entry.successful });
+    if (entry.betrayed) next.cinematicEvents.push({ id: eventId("betrayal"), round: next.round, order: eventOrder++, type: "deal-broken", visibility: "public", actorId: entry.playerId, cardType: entry.cardType, successful: true, ...(entry.targetPlayerId ? { targetPlayerId: entry.targetPlayerId } : {}), ...(entry.districtId ? { districtId: entry.districtId } : {}) });
+    if (!entry.successful) next.cinematicEvents.push({ id: eventId("blocked"), round: next.round, order: eventOrder++, type: "operation-blocked", visibility: "public", actorId: entry.playerId, cardType: entry.cardType, successful: false, reason: failureReasons.get(entry.playerId) ?? "no-valid-target", ...(entry.targetPlayerId ? { targetPlayerId: entry.targetPlayerId } : {}), ...(entry.districtId ? { districtId: entry.districtId } : {}) });
+  }
+  for (const districtId of next.activeDistricts.filter((id) => ownersBefore[id] !== next.districts[id].ownerId)) {
+    const ownerId = next.districts[districtId].ownerId;
+    next.cinematicEvents.push({ id: eventId(ownerId ? "capture" : "contested"), round: next.round, order: eventOrder++, type: ownerId ? "district-captured" : "district-contested", visibility: "public", districtId, previousOwnerId: ownersBefore[districtId] ?? null, ownerId });
+  }
+  next.cinematicEvents.push({ id: eventId("complete"), round: next.round, order: eventOrder++, type: "round-complete", visibility: "public" });
   next.phase = "cinematic-reveal";
   next.stateVersion += 1;
   return next;

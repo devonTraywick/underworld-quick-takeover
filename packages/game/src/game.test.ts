@@ -123,6 +123,13 @@ describe("operation resolution", () => {
     expect(resolved.districts[districtId].stakes[fortifier!]).toBe(1);
     expect(resolved.players[attacker!]!.successfulSabotageRounds).toEqual([1]);
     expect(resolved.players[attacker!]!.successfulOperationRounds).toEqual([1]);
+    const timeline = resolved.cinematicEvents.filter((event) => event.round === 1);
+    expect(timeline.map((event) => event.order)).toEqual(timeline.map((_, index) => index));
+    expect(timeline).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "defense-triggered", districtId }),
+      expect.objectContaining({ type: "stakes-removed", districtId, before: 2, after: 1, amount: 1 }),
+      expect.objectContaining({ type: "round-complete" }),
+    ]));
   });
 
   it("converts sabotage with no legal target into one Influence without success credit", () => {
@@ -133,6 +140,9 @@ describe("operation resolution", () => {
     const resolved = resolveOperations(state);
     expect(resolved.players[attacker!]!.influence).toBe(3);
     expect(resolved.players[attacker!]!.successfulOperationRounds).toEqual([]);
+    expect(resolved.cinematicEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "operation-blocked", actorId: attacker, reason: "no-valid-target" }),
+    ]));
   });
 
   it("resolves an honored joint operation with useful bilateral rewards", () => {
@@ -166,6 +176,9 @@ describe("operation resolution", () => {
     expect(resolved.players[traitor!]!.betrayedDeals).toBe(1);
     expect(resolved.players[victim!]!.influence).toBe(3);
     expect(resolved.deals[0]!.outcome?.breakers).toEqual([traitor]);
+    expect(resolved.cinematicEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "deal-broken", actorId: traitor, targetPlayerId: victim }),
+    ]));
   });
 });
 

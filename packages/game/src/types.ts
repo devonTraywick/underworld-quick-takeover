@@ -58,14 +58,36 @@ export interface GameState {
   draft: DraftState;
   deals: Deal[];
   revealLog: RevealEntry[];
+  cinematicEvents: CinematicEvent[];
   roundHistory: RoundSummary[];
   endedEarly?: boolean;
+}
+
+export type CinematicEventType = "operation-revealed" | "stakes-added" | "stakes-removed" | "defense-triggered" | "operation-blocked" | "influence-changed" | "deal-broken" | "district-captured" | "district-contested" | "round-complete";
+
+export interface CinematicEvent {
+  id: string;
+  round: number;
+  order: number;
+  type: CinematicEventType;
+  visibility: "public";
+  actorId?: PlayerId;
+  targetPlayerId?: PlayerId;
+  districtId?: DistrictId;
+  cardType?: CardInstance["type"];
+  before?: number;
+  after?: number;
+  amount?: number;
+  previousOwnerId?: PlayerId | null;
+  ownerId?: PlayerId | null;
+  successful?: boolean;
+  reason?: "no-valid-target" | "fortified-stake";
 }
 
 export interface RoundSummary {
   round: number;
   operations: RevealEntry[];
-  standings: Array<{ playerId: PlayerId; districts: number; influence: number; totalStake: number }>;
+  standings: Array<{ playerId: PlayerId; districts: number; influence: number; totalStake: number; publicPoints: number }>;
   ownershipChanges: Array<{ districtId: DistrictId; previousOwnerId: PlayerId | null; ownerId: PlayerId | null }>;
   deals: Array<{ id: string; type: Deal["type"]; honored: boolean; breakers: PlayerId[] }>;
   biggestPlayPlayerId: PlayerId | null;

@@ -25,7 +25,7 @@ const CENTERS: Record<DistrictId, [number, number]> = {
 
 const FACTIONS = ["#C5A46A", "#9B4055", "#4E9299", "#725CA8", "#C56E45", "#6C8B58", "#D0C7B5", "#5174A4"];
 
-export function CityMap({ game, selected, onSelect }: { game: PublicGame; selected?: DistrictId | undefined; onSelect?: ((id: DistrictId) => void) | undefined }) {
+export function CityMap({ game, selected, effect, onSelect }: { game: PublicGame; selected?: DistrictId | undefined; effect?: PublicGame["cinematicEvents"][number] | null; onSelect?: ((id: DistrictId) => void) | undefined }) {
   const playerById = new Map(game.players.map((player) => [player.id, player]));
   return (
     <div className="map-shell" aria-label="City district map">
@@ -39,7 +39,7 @@ export function CityMap({ game, selected, onSelect }: { game: PublicGame; select
           const stakes = Object.entries(district.stakes).filter(([, value]) => value > 0)
             .sort((a, b) => b[1] - a[1]);
           return (
-            <g key={id} className={`district ${selected === id ? "is-selected" : ""}`} role="button" tabIndex={onSelect ? 0 : -1}
+            <g key={id} className={`district ${selected === id ? "is-selected" : ""} ${effect?.districtId === id ? `district-effect effect-${effect.type}` : ""}`} role="button" tabIndex={onSelect ? 0 : -1}
               aria-label={`${LABELS[id]}, ${owner ? `controlled by ${owner.nickname}` : "neutral"}`}
               onClick={() => onSelect?.(id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect?.(id); }}>
               <polygon points={SHAPES[id]} style={{ "--owner": owner ? FACTIONS[owner.seat % FACTIONS.length] : "#34363d" } as React.CSSProperties} />
@@ -58,6 +58,7 @@ export function CityMap({ game, selected, onSelect }: { game: PublicGame; select
           );
         })}
       </svg>
+      {effect?.districtId && ["district-captured", "district-contested"].includes(effect.type) && <div className={`capture-headline effect-${effect.type}`} role="status"><b>{LABELS[effect.districtId]}</b><span>{effect.type === "district-captured" ? `Captured by ${game.players.find((player) => player.id === effect.ownerId)?.nickname ?? "a rival"}` : "Now contested"}</span></div>}
       <div className="map-legend">
         {game.players.map((player) => <span key={player.id}><i style={{ background: FACTIONS[player.seat % FACTIONS.length] }} />{player.nickname}</span>)}
       </div>
