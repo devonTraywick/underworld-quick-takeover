@@ -70,6 +70,15 @@ describe("match setup", () => {
     }
   });
 
+  it("never repeats Sabotage in two-to-four-player markets", () => {
+    for (let count = 2; count <= 4; count += 1) {
+      for (let round = 1; round <= 5; round += 1) {
+        const market = createMarket(count, round, `sabotage-regression-${count}`);
+        expect(market.filter((card) => card.type === "sabotage").length).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
   it("rejects invalid player counts and duplicate identities", () => {
     expect(() => createGame("m", players(1), "seed")).toThrow(/2–8/);
     expect(() => createGame("m", [{ id: "a", nickname: "Boss" }, { id: "b", nickname: " boss " }], "seed")).toThrow(/Nicknames/);

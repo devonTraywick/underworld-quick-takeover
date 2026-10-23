@@ -37,6 +37,7 @@ export interface PublicState {
     version: number;
     players: Array<{ id: PlayerId; nickname: string; seat: number; connected: boolean; lastSeenAt: number }>;
     readyCount: number;
+    readyPlayerIds: PlayerId[];
     rematchVoteCount: number;
     deadlineAt: number | null;
     phaseStartedAt: number | null;

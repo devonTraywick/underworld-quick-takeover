@@ -281,6 +281,30 @@ describe("authoritative multiplayer server", () => {
     expect(replay.error.code).toBe("INVALID_CREDENTIALS");
   });
 
+  it("preserves the authoritative market and the player's ready state across reconnect", async () => {
+    const { url } = await harness();
+    const { host, guest } = await startTwoPlayerMatch(url);
+    const market = structuredClone(guest.publicState.game.market);
+    const ready = await emitAck<any>(guest.socket, "negotiation:setReady", {
+      commandId: commandId(), expectedStateVersion: version(guest), ready: true,
+    });
+    expect(ready.ok).toBe(true);
+    await eventually(() => guest.publicState.room.readyPlayerIds.includes(guest.playerId));
+    const token = guest.reconnectToken;
+    guest.socket.disconnect();
+    const replacement = await connect(url);
+    const established = new Promise<any>((resolve) => replacement.once("session:established", resolve));
+    const publicState = new Promise<any>((resolve) => replacement.once("state:public", resolve));
+    const resumed = await emitAck<any>(replacement, "room:resume", {
+      roomCode: host.roomCode, playerId: guest.playerId, reconnectToken: token,
+    });
+    await established;
+    expect(resumed.ok).toBe(true);
+    const state = await publicState;
+    expect(state.game.market).toEqual(market);
+    expect(state.room.readyPlayerIds).toContain(guest.playerId);
+  });
+
   it("rejects late commands and advances phases with legal automatic moves", async () => {
     const { url, clock, server } = await harness();
     const { host, guest } = await startTwoPlayerMatch(url);

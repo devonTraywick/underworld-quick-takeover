@@ -96,11 +96,16 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(guest.getByText("The docks are quiet tonight.")).toBeVisible();
   await expect(guest.getByRole("tab", { name: /Private/ }).locator(".attention-count")).toHaveCount(0);
 
+  await guest.getByRole("button", { name: "Lock in & continue" }).click();
+  await expect(guest.getByRole("button", { name: "Not ready yet" })).toBeVisible();
   await guest.reload();
   await expect(guest.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");
+  await expect(guest.getByRole("button", { name: "Not ready yet" })).toBeVisible();
   await guest.getByRole("button", { name: "Missions" }).click();
   await expect(guest.locator(".objective-panel .objective-item")).toHaveCount(3);
   await guest.getByRole("button", { name: "Close objectives" }).click();
+  await guest.getByRole("button", { name: "Not ready yet" }).click();
+  await expect(guest.getByRole("button", { name: "Lock in & continue" })).toBeVisible();
 
   await Promise.all([
     host.getByRole("button", { name: "Lock in & continue" }).click(),

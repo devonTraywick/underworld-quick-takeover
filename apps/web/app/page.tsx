@@ -222,7 +222,7 @@ function PhasePanel({ state, privateState, playerId, busy, setReady, submitDraft
   setReady: (ready: boolean) => Promise<unknown>; submitDraft: (ids: string[]) => Promise<unknown>; submitOperation: (choice: object) => Promise<unknown>; voteRematch: () => Promise<unknown>; continueRound: () => Promise<unknown>; leaveMatch: () => Promise<void>; onRevealEffect: (event: PublicGame["cinematicEvents"][number] | null) => void; operationDistrict: DistrictId | undefined; onOperationDistrict: (id: DistrictId | undefined) => void; openHistory: () => void;
 }) {
   const game = state.game!;
-  if (game.phase === "negotiation") return <Negotiation game={game} state={state} busy={busy} setReady={setReady} />;
+  if (game.phase === "negotiation") return <Negotiation game={game} state={state} playerId={playerId} busy={busy} setReady={setReady} />;
   if (game.phase === "draft") return <Draft game={game} privateState={privateState} busy={busy} submit={submitDraft} />;
   if (game.phase === "operations") return <Operation game={game} privateState={privateState} playerId={playerId} busy={busy} submit={submitOperation} districtId={operationDistrict} setDistrict={onOperationDistrict} />;
   if (game.phase === "cinematic-reveal") return <CinematicReveal state={state} onEffect={onRevealEffect} />;
@@ -231,22 +231,23 @@ function PhasePanel({ state, privateState, playerId, busy, setReady, submitDraft
   return <Finale state={state} playerId={playerId} busy={busy} vote={voteRematch} leave={leaveMatch} />;
 }
 
-function Negotiation({ game, state, busy, setReady }: { game: PublicGame; state: PublicState; busy: boolean; setReady: (ready: boolean) => Promise<unknown> }) {
-  const [ready, setLocalReady] = useState(false);
+function Negotiation({ game, state, playerId, busy, setReady }: { game: PublicGame; state: PublicState; playerId: string; busy: boolean; setReady: (ready: boolean) => Promise<unknown> }) {
+  const ready = state.room.readyPlayerIds.includes(playerId);
   return <section className="phase-card panel"><span className="eyebrow">Phase one</span><h2>Make your promises</h2><p>Talk openly or send private terms. Agreements reward loyalty, but the city remembers betrayal.</p>
     <div className="ready-meter"><div><b>{state.room.readyCount}</b><span>of {game.players.length} ready</span></div><div className="meter"><i style={{ width: `${state.room.readyCount / game.players.length * 100}%` }} /></div></div>
-    <button className={ready ? "outline-button wide" : "gold-button wide"} disabled={busy} onClick={async () => { await setReady(!ready); setLocalReady(!ready); }}>{ready ? "Not ready yet" : "Lock in & continue"}</button>
+    <button className={ready ? "outline-button wide" : "gold-button wide"} disabled={busy} onClick={() => setReady(!ready)}>{ready ? "Not ready yet" : "Lock in & continue"}</button>
   </section>;
 }
 
 function Draft({ game, privateState, busy, submit }: { game: PublicGame; privateState: PrivateState | null; busy: boolean; submit: (ids: string[]) => Promise<unknown> }) {
   const [selected, setSelected] = useState<string | null>(privateState?.draftPreferences[0] ?? null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const typeCounts = game.market.reduce<Partial<Record<CardType, number>>>((counts, card) => ({ ...counts, [card.type]: (counts[card.type] ?? 0) + 1 }), {});
   const choose = (id: string) => setSelected(id);
   const lock = async () => { if (selected) await submit([selected, ...game.market.map((card) => card.id).filter((cardId) => cardId !== selected)]); };
   return <section className={`phase-card panel ${privateState?.draftPreferences.length ? "action-complete" : "action-required"}`}><span className="eyebrow">Blind draft</span><h2>Choose your leverage</h2><p>Your first choice is secret. Rotating priority decides collisions.</p>
     <div className="card-market">{game.market.map((card) => { const copy = CARD_COPY[card.type]; return <motion.button whileHover={{ y: -7, rotate: -1.2 }} whileTap={{ scale: .97 }} key={card.id} className={`action-card ${selected === card.id ? "selected" : ""} ${expanded === card.id ? "expanded" : ""}`} disabled={busy} onClick={() => choose(card.id)} onDoubleClick={() => setExpanded(expanded === card.id ? null : card.id)} aria-pressed={selected === card.id}>
-      <span className="card-art" style={{ "--card-column": CARD_ART_INDEX[card.type] % 3, "--card-row": Math.floor(CARD_ART_INDEX[card.type] / 3) } as React.CSSProperties} /><span className="card-symbol">{copy.symbol}</span><b>{copy.name}</b><small>{copy.copy}</small>{expanded === card.id && <span className="card-exact"><b>Target</b> {CARD_GUIDE[card.type].target}<b>Expected benefit</b> {CARD_GUIDE[card.type].benefit}<b>Exact rule</b> {CARD_GUIDE[card.type].details}</span>}<span className="card-detail" onClick={(event) => { event.stopPropagation(); setExpanded(expanded === card.id ? null : card.id); }}>{expanded === card.id ? "Hide details" : "More details"}</span>{selected === card.id && <em>{privateState?.draftPreferences.length ? "Preference locked" : "Selected"}</em>}</motion.button>; })}</div>
+      <span className="card-art" style={{ "--card-column": CARD_ART_INDEX[card.type] % 3, "--card-row": Math.floor(CARD_ART_INDEX[card.type] / 3) } as React.CSSProperties} /><span className="card-symbol">{copy.symbol}</span><b>{copy.name}</b>{(typeCounts[card.type] ?? 0) > 1 && <span className="market-copy">{typeCounts[card.type]} copies · unique card IDs</span>}<small>{copy.copy}</small>{expanded === card.id && <span className="card-exact"><b>Target</b> {CARD_GUIDE[card.type].target}<b>Expected benefit</b> {CARD_GUIDE[card.type].benefit}<b>Exact rule</b> {CARD_GUIDE[card.type].details}</span>}<span className="card-detail" onClick={(event) => { event.stopPropagation(); setExpanded(expanded === card.id ? null : card.id); }}>{expanded === card.id ? "Hide details" : "More details"}</span>{selected === card.id && <em>{privateState?.draftPreferences.length ? "Preference locked" : "Selected"}</em>}</motion.button>; })}</div>
     <div className="draft-confirm"><button className="gold-button" disabled={busy || !selected || (privateState?.draftPreferences.length ?? 0) > 0} onClick={lock}>{privateState?.draftPreferences.length ? "Card locked" : "Lock in"}</button><p className="submission-note">{game.submissionCount} of {game.players.length} players ready</p></div>
   </section>;
 }
@@ -257,7 +258,10 @@ function Operation({ game, privateState, playerId, busy, submit, districtId, set
   const needsDistrict = ["infiltrate", "fortify", "sabotage", "double-cross"].includes(type ?? "");
   useEffect(() => { if (needsDistrict && !districtId) setDistrict(privateState?.operation?.districtId ?? game.activeDistricts[0]!); }, [districtId, game.activeDistricts, needsDistrict, privateState?.operation?.districtId, setDistrict]);
   const rivals = game.players.filter((player) => player.id !== playerId);
-  const [targetPlayerId, setTarget] = useState(privateState?.operation?.targetPlayerId ?? rivals[0]?.id ?? "");
+  const eligibleRivals = type === "sabotage" && districtId
+    ? rivals.filter((player) => (game.districts[districtId]?.stakes[player.id] ?? 0) > 0)
+    : rivals;
+  const [targetPlayerId, setTarget] = useState(privateState?.operation?.targetPlayerId ?? eligibleRivals[0]?.id ?? "");
   const deals = privateState?.deals.filter((deal) => deal.status === "accepted" && deal.round === game.round) ?? [];
   const [dealId, setDeal] = useState(privateState?.operation?.dealId ?? deals[0]?.id ?? "");
   const [deploying, setDeploying] = useState(false);
@@ -265,11 +269,14 @@ function Operation({ game, privateState, playerId, busy, submit, districtId, set
   const resolvedType = card.type;
   const needsRival = ["sabotage", "surveillance"].includes(resolvedType);
   const copy = CARD_COPY[resolvedType];
+  const effectiveTargetPlayerId = eligibleRivals.some((rival) => rival.id === targetPlayerId) ? targetPlayerId : eligibleRivals[0]?.id ?? "";
+  const noSabotageTarget = resolvedType === "sabotage" && eligibleRivals.length === 0;
   return <section className="phase-card panel operation-card"><span className="eyebrow">Hidden operation</span><div className="chosen-card"><span className="card-art-mini" style={{ "--card-column": CARD_ART_INDEX[resolvedType] % 3, "--card-row": Math.floor(CARD_ART_INDEX[resolvedType] / 3) } as React.CSSProperties}>{copy.symbol}</span><div><h2>{copy.name}</h2><p>{copy.copy}</p></div></div>
     {needsDistrict && <><div className="target-preview"><span>Target selected</span><b>{districtId ? DISTRICT_LABELS[districtId] : "Choose a district on the map"}</b></div><label className="control-label">Accessible target list<select value={districtId ?? ""} onChange={(event) => setDistrict(event.target.value as DistrictId)}>{game.activeDistricts.map((id) => <option key={id} value={id}>{DISTRICT_LABELS[id]}</option>)}</select></label></>}
-    {needsRival && <label className="control-label">Target rival<select value={targetPlayerId} onChange={(event) => setTarget(event.target.value)}>{rivals.map((rival) => <option key={rival.id} value={rival.id}>{rival.nickname}</option>)}</select></label>}
+    {needsRival && <label className="control-label">Target rival<select value={effectiveTargetPlayerId} disabled={noSabotageTarget} onChange={(event) => setTarget(event.target.value)}>{eligibleRivals.map((rival) => <option key={rival.id} value={rival.id}>{rival.nickname}{resolvedType === "sabotage" && districtId ? ` · ${game.districts[districtId]?.stakes[rival.id] ?? 0} stake` : ""}</option>)}{noSabotageTarget && <option value="">No rival stake in this district</option>}</select></label>}
+    {noSabotageTarget && <p className="operation-warning" role="status">No rival has stake here. Choose another district, or deploy to take the automatic fallback: +1 Influence and no operation point.</p>}
     {resolvedType === "double-cross" && <label className="control-label">Agreement to betray<select value={dealId} onChange={(event) => setDeal(event.target.value)}><option value="">No deal — convert to Infiltrate</option>{deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.type.replaceAll("-", " ")}</option>)}</select></label>}
-    <button className={`gold-button wide ${(!needsDistrict || districtId) && !privateState?.operation ? "deploy-ready" : ""}`} disabled={busy || deploying || (needsDistrict && !districtId)} onClick={async () => { setDeploying(true); await new Promise((resolve) => setTimeout(resolve, 520)); await submit({ cardId: card.id, ...(needsDistrict ? { districtId } : {}), ...(needsRival ? { targetPlayerId } : {}), ...(resolvedType === "double-cross" && dealId ? { dealId } : {}) }); setDeploying(false); }}>{privateState?.operation ? "Update hidden move" : "Deploy operation"}</button>
+    <button className={`gold-button wide ${(!needsDistrict || districtId) && !privateState?.operation ? "deploy-ready" : ""}`} disabled={busy || deploying || (needsDistrict && !districtId)} onClick={async () => { setDeploying(true); await new Promise((resolve) => setTimeout(resolve, 520)); await submit({ cardId: card.id, ...(needsDistrict ? { districtId } : {}), ...(needsRival && effectiveTargetPlayerId ? { targetPlayerId: effectiveTargetPlayerId } : {}), ...(resolvedType === "double-cross" && dealId ? { dealId } : {}) }); setDeploying(false); }}>{privateState?.operation ? "Update hidden move" : noSabotageTarget ? "Deploy fallback operation" : "Deploy operation"}</button>
     <AnimatePresence>{deploying && <motion.div className="card-flight" initial={{ x: "0vw", y: "30vh", rotate: -12, scale: .65, opacity: 0 }} animate={{ x: "-5vw", y: "-24vh", rotate: 3, scale: 1, opacity: 1 }} exit={{ scale: 1.08, opacity: 0 }} transition={{ type: "spring", stiffness: 210, damping: 20 }}><span className="card-art-mini" style={{ "--card-column": CARD_ART_INDEX[resolvedType] % 3, "--card-row": Math.floor(CARD_ART_INDEX[resolvedType] / 3) } as React.CSSProperties} /></motion.div>}</AnimatePresence>
     {privateState?.operation && <p className="locked-note">✓ Your operation is locked in. The phase advances when every boss is ready or time expires.</p>}
   </section>;
@@ -302,7 +309,8 @@ function Finale({ state, playerId, busy, vote, leave }: { state: PublicState; pl
   const [voted, setVoted] = useState(false); const score = state.finalScore;
   const winners = score?.winnerIds.map((id) => state.game!.players.find((player) => player.id === id)?.nickname).join(" & ");
   const winner = state.game!.players.find((player) => player.id === score?.winnerIds[0]);
-  return <section className="phase-card panel finale-card"><div className="winner-intro">{winner && <span className={`boss-avatar boss-${winner.seat}`} />}<div><span className="eyebrow">{state.game?.endedEarly ? "Early settlement · provisional ranking" : "The books are closed"}</span><h2>{score?.winnerIds.includes(playerId) ? "The city is yours" : `${winners} takes the city`}</h2><p>{winner?.nickname} commands the final chapter.</p></div></div>
+  const sharedVictory = (score?.winnerIds.length ?? 0) > 1;
+  return <section className="phase-card panel finale-card"><div className="winner-intro">{winner && <span className={`boss-avatar boss-${winner.seat}`} />}<div><span className="eyebrow">{state.game?.endedEarly ? "Early settlement · final score at the stopping point" : "The books are closed"}</span><h2>{sharedVictory ? `${winners} share the city` : score?.winnerIds.includes(playerId) ? "The city is yours" : `${winners} takes the city`}</h2><p>{sharedVictory ? "The leaders tied on points and every published tiebreaker, so victory is shared." : `${winner?.nickname} commands the final chapter.`}</p></div></div>
     <div className="score-table">{score?.standings.map((entry, index) => { const player = state.game!.players.find((candidate) => candidate.id === entry.playerId)!; return <div key={entry.playerId} className={entry.playerId === playerId ? "me" : ""}><strong>{index + 1}</strong><span><b>{player.nickname}</b><small>Primary {entry.primary} + sides {entry.sides} + districts {entry.districts} + operations {entry.operations}</small><small className="tiebreak-stats">Tiebreakers: {entry.controlledDistricts} controlled · {entry.influence} Influence · {entry.betrayedDeals} betrayals</small></span><em>{entry.total}<small>pts</small></em></div>; })}</div>
     <p className="tiebreak-copy">{TIEBREAK_COPY}</p>
     <details className="objective-reveal"><summary>Reveal every objective</summary><div>{state.finalObjectives?.map((entry) => { const player = state.game!.players.find((candidate) => candidate.id === entry.playerId)!; return <article key={entry.playerId}><b>{player.nickname}</b>{entry.objectives.map((objective) => <span key={objective.id} className={objective.completed ? "complete" : "missed"}><i>{objective.completed ? "✓" : "×"}</i>{OBJECTIVE_NAMES[objective.id] ?? objective.id}<em>{objective.points}</em></span>)}</article>; })}</div></details>

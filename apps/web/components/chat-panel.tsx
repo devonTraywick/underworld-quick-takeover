@@ -21,11 +21,25 @@ export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate
   const [recipientId, setRecipientId] = useState(rivals[0]?.id ?? "");
   const [body, setBody] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+  const viewedRef = useRef(onChannelViewed);
+  viewedRef.current = onChannelViewed;
   const privateMessages = useMemo(() => privateState?.privateMessages ?? [], [privateState?.privateMessages]);
   const messages = channel === "public" ? state.room.chats : privateMessages;
 
   useEffect(() => { if (!recipientId && rivals[0]) setRecipientId(rivals[0].id); }, [recipientId, rivals]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, channel]);
+  useEffect(() => {
+    if (channel === "public") viewedRef.current?.("public");
+  }, [channel, state.room.chats.length]);
+  useEffect(() => {
+    if (channel === "private") viewedRef.current?.("private");
+  }, [channel, privateMessages.length]);
+  useEffect(() => {
+    if (state.game?.phase === "negotiation") {
+      setChannel("public");
+      viewedRef.current?.("public");
+    }
+  }, [state.game?.round, state.game?.phase]);
 
   return <section className="chat-panel panel">
     <header><div><span className="eyebrow">The wire</span><strong>{channel === "public" ? "Public room" : "Private line"}</strong></div><span className="secure-badge">{channel === "private" ? "Encrypted" : "Open"}</span></header>

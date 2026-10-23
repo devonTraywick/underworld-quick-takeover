@@ -151,11 +151,12 @@ input::placeholder { color: #5f6064; }
 .action-card b { font: 500 .95rem var(--display); }
 .action-card small { color: var(--muted); font-size: .65rem; line-height: 1.4; }
 .action-card em { color: #94b5a0; font: normal .58rem var(--body); letter-spacing: .08em; text-transform: uppercase; margin-top: .25rem; }
+.market-copy { color:var(--teal);font-size:.48rem;letter-spacing:.06em;text-transform:uppercase; }
 .submission-note, .locked-note { color: var(--gold) !important; text-align: center; font-size: .66rem !important; margin: 1rem 0 0 !important; }
 .chosen-card { display: flex; gap: 1rem; align-items: center; margin-bottom: 1.2rem; }
 .chosen-card > span { width: 50px; height: 62px; display: grid; place-items: center; border: 1px solid var(--gold); color: var(--gold); font: 400 1.3rem var(--display); }
 .chosen-card h2 { margin: 0; }.chosen-card p { color: var(--muted); font-size: .72rem; margin: .3rem 0 0; }
-.control-label { margin: .9rem 0; }.control-label select { margin-top: .1rem; }
+.control-label { display:grid;grid-template-columns:minmax(130px,.75fr) minmax(0,1.25fr);align-items:center;gap:.65rem;margin:.7rem 0;color:var(--muted);font-size:.62rem;line-height:1.35; }.control-label select { min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis; }.operation-warning { margin:.45rem 0!important;padding:.55rem .65rem;border-left:2px solid #c78555;background:rgba(104,43,57,.18);color:#e4c7b1!important;font-size:.6rem!important;line-height:1.45!important; }
 .objective-panel { padding: 1.1rem 1.3rem; }
 .objective-panel header strong, .deal-panel header strong, .chat-panel header strong { font: 500 1rem var(--display); }
 .objective-panel article { position: relative; display: grid; grid-template-columns: 1fr auto; gap: .25rem; padding: .8rem 0; border-bottom: 1px solid rgba(233,223,204,.07); }
@@ -385,7 +386,7 @@ html:has(.game-page), body:has(.game-page) { height: 100%; overflow: hidden; ove
   .action-dock { grid-column: 1; grid-row: 2; min-height: 0; padding-bottom: 42px; }
   .action-dock .phase-card { display: block; padding: .7rem; overflow: auto; }.action-dock .phase-card > .eyebrow, .action-dock .phase-card > p { display: none; }.action-dock .phase-card h2 { margin: 0 0 .4rem; font-size: 1.1rem; }
   .action-dock .card-market { display: flex; height: calc(100% - 22px); padding: .3rem .6rem .8rem; }.action-card { flex-basis: 118px; }.card-art { min-height: 58px; }
-  .action-dock .ready-meter { margin: .4rem 0; }.action-dock .chosen-card { margin: 0 0 .45rem; }.action-dock .control-label { margin: .35rem 0; }.action-dock input, .action-dock select, .action-dock button { min-height: 38px; }
+  .action-dock .ready-meter { margin: .4rem 0; }.action-dock .chosen-card { margin: 0 0 .45rem; }.action-dock .control-label { grid-template-columns:1fr;margin:.35rem 0;gap:.2rem; }.action-dock input, .action-dock select, .action-dock button { min-height: 42px; }
   .boss-column, .social-column { display: none; position: fixed; z-index: 60; inset: calc(58px + env(safe-area-inset-top)) 0 env(safe-area-inset-bottom); padding: .6rem; background: rgba(7,9,12,.97); backdrop-filter: blur(18px); }
   .boss-column.mobile-open { display: grid; grid-template-rows: 32% minmax(0,1fr); }.social-column.mobile-open { display: grid; grid-template-rows: minmax(0,1fr) auto; overflow: auto; }
   .boss-column .boss-dossier { grid-template-columns: 42% 1fr; grid-template-rows: 1fr; }.boss-column .boss-portrait { min-height: 0; }.boss-column .syndicate-meta { align-self: center; }

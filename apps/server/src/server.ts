@@ -513,7 +513,7 @@ export class MultiplayerServer {
       stateVersion: room.version,
       room: { code: room.code, status: room.status, hostPlayerId: room.hostPlayerId,
         players: room.players.map(({ reconnectTokenHash: _, ...player }) => player),
-        version: room.version, readyCount: room.readyPlayerIds.length, deadlineAt: room.deadlineAt,
+        version: room.version, readyCount: room.readyPlayerIds.length, readyPlayerIds: [...room.readyPlayerIds], deadlineAt: room.deadlineAt,
         phaseStartedAt: room.phaseStartedAt ?? null, minimumAdvanceAt: room.minimumAdvanceAt ?? null,
         actionAvailableAt: room.actionAvailableAt ?? null, pacingProfile: room.pacingProfile ?? "quick",
         endMatchVote: room.endMatchVote ? { id: room.endMatchVote.id, createdBy: room.endMatchVote.createdBy,
