@@ -20,20 +20,20 @@ function otherName(deal: Deal, game: PublicGame, playerId: string): string {
   return game.players.find((player) => player.id === otherId)?.nickname ?? "Unknown boss";
 }
 
-function DealCard({ deal, game, playerId, disabled, respond, withdraw }: { deal: Deal; game: PublicGame; playerId: string; disabled: boolean; respond: (id: string, accept: boolean) => Promise<unknown>; withdraw: (id: string) => Promise<unknown> }) {
+function DealCard({ deal, game, playerId, disabled, negotiationOpen, respond, withdraw }: { deal: Deal; game: PublicGame; playerId: string; disabled: boolean; negotiationOpen: boolean; respond: (id: string, accept: boolean) => Promise<unknown>; withdraw: (id: string) => Promise<unknown> }) {
   const incoming = deal.recipientId === playerId && deal.status === "pending" && deal.round === game.round;
   const outgoing = deal.proposerId === playerId && deal.status === "pending" && deal.round === game.round;
   return <article className={`deal-workspace-card ${incoming ? "needs-attention" : ""}`}>
     <header><div><span>{incoming ? "Incoming proposal" : outgoing ? "Sent proposal" : "Agreement"}</span><b>{DEAL_NAMES[deal.type]}</b></div><em className={`status status-${deal.status}`}>{dealStatusLabel(deal, game.round)}</em></header>
     <dl><div><dt>Other boss</dt><dd>{otherName(deal, game, playerId)}</dd></div>{deal.terms.districtId && <div><dt>District</dt><dd>{DISTRICT_LABELS[deal.terms.districtId]}</dd></div>}</dl>
     <p>{DEAL_RULES[deal.type]}</p>
-    {incoming && <div className="deal-response-actions"><button className="reject-deal" disabled={disabled} onClick={() => respond(deal.id, false)}>Reject proposal</button><button className="accept-deal" disabled={disabled} onClick={() => respond(deal.id, true)}>Accept proposal</button></div>}
-    {outgoing && <button className="cancel-deal" disabled={disabled} onClick={() => withdraw(deal.id)}>Cancel proposal</button>}
+    {incoming && <div className="deal-response-actions"><button className="reject-deal" disabled={disabled || !negotiationOpen} onClick={() => respond(deal.id, false)}>Reject proposal</button><button className="accept-deal" disabled={disabled || !negotiationOpen} onClick={() => respond(deal.id, true)}>Accept proposal</button></div>}
+    {outgoing && <button className="cancel-deal" disabled={disabled || !negotiationOpen} onClick={() => withdraw(deal.id)}>Cancel proposal</button>}
   </article>;
 }
 
-export function DealPanel({ game, privateState, playerId, disabled, expanded = false, propose, respond, withdraw }: {
-  game: PublicGame; privateState: PrivateState; playerId: string; disabled: boolean; expanded?: boolean;
+export function DealPanel({ game, privateState, playerId, disabled, expanded = false, negotiationOpen = true, initialRecipientId, composeRequest = 0, propose, respond, withdraw }: {
+  game: PublicGame; privateState: PrivateState; playerId: string; disabled: boolean; expanded?: boolean; negotiationOpen?: boolean; initialRecipientId?: string | undefined; composeRequest?: number;
   propose: (payload: object) => Promise<unknown>; respond: (id: string, accept: boolean) => Promise<unknown>; withdraw: (id: string) => Promise<unknown>;
 }) {
   const rivals = game.players.filter((player) => player.id !== playerId);
@@ -46,8 +46,10 @@ export function DealPanel({ game, privateState, playerId, disabled, expanded = f
   const [districtId, setDistrict] = useState<DistrictId>(game.activeDistricts[0]!);
   const [feedback, setFeedback] = useState("");
   const previousIncoming = useRef(incomingCount);
+  useEffect(() => { if (initialRecipientId && rivals.some((player) => player.id === initialRecipientId)) setRecipient(initialRecipientId); }, [initialRecipientId, rivals]);
+  useEffect(() => { if (composeRequest > 0 && negotiationOpen) { setComposing(true); setStep(1); setFeedback(""); } }, [composeRequest, negotiationOpen]);
   useEffect(() => {
-    if (incomingCount > previousIncoming.current) { setTab("incoming"); setComposing(false); setFeedback("New proposal received. Review it before negotiation ends."); playCue("deal-incoming"); }
+    if (incomingCount > previousIncoming.current) { setTab("incoming"); setComposing(false); setFeedback("New proposal received. Review it before negotiation ends."); }
     previousIncoming.current = incomingCount;
   }, [incomingCount]);
   const deals = useMemo(() => {
@@ -70,9 +72,10 @@ export function DealPanel({ game, privateState, playerId, disabled, expanded = f
   };
 
   return <section className={`panel deal-panel ${expanded ? "deal-panel-expanded" : ""}`} aria-label="Deals workspace">
-    <header className="deal-workspace-heading"><div><span className="eyebrow">Back-room terms</span><strong>Deals</strong></div><button className="create-deal" onClick={() => { setComposing(true); setStep(1); setFeedback(""); }}>Create Deal</button></header>
+    <header className="deal-workspace-heading"><div><span className="eyebrow">Back-room terms</span><strong>Deals</strong></div><button className="create-deal" disabled={!negotiationOpen} onClick={() => { setComposing(true); setStep(1); setFeedback(""); }}>Create Deal</button></header>
+    {!negotiationOpen && <p className="deal-phase-note">Deals can be reviewed now. New proposals and responses open during Negotiation.</p>}
     {feedback && <p className="deal-feedback" role="status">✓ {feedback}</p>}
-    {composing ? <div className="deal-composer" aria-label="Create a deal">
+    {composing && negotiationOpen ? <div className="deal-composer" aria-label="Create a deal">
       <div className="deal-step-meter"><span>Proposal step {step} of 4</span><i style={{ width: `${step * 25}%` }} /></div>
       {step === 1 && <fieldset><legend>Choose a rival boss</legend>{rivals.map((player) => <button key={player.id} className={recipientId === player.id ? "selected" : ""} onClick={() => setRecipient(player.id)}><span className={`boss-avatar boss-${player.seat}`} /><b>{player.nickname}</b><small>Open a private negotiation</small></button>)}</fieldset>}
       {step === 2 && <fieldset><legend>Choose the agreement</legend>{Object.entries(DEAL_NAMES).map(([value, name]) => <button key={value} className={type === value ? "selected" : ""} onClick={() => setType(value as DealType)}><b>{name}</b><small>{DEAL_RULES[value as DealType]}</small></button>)}</fieldset>}
@@ -81,7 +84,7 @@ export function DealPanel({ game, privateState, playerId, disabled, expanded = f
       <div className="deal-composer-actions"><button onClick={() => step === 1 ? setComposing(false) : setStep(step - 1)}>{step === 1 ? "Cancel" : "Back"}</button>{step < 4 ? <button className="gold-button" disabled={!recipientId} onClick={() => setStep(step + 1)}>Continue</button> : <button className="gold-button" disabled={disabled || !recipientId} onClick={send}>Send proposal</button>}</div>
     </div> : <>
       <div className="deal-tabs" role="tablist" aria-label="Deal categories"><button role="tab" aria-selected={tab === "incoming"} className={tab === "incoming" ? "active" : ""} onClick={() => setTab("incoming")}>Incoming{incomingCount > 0 && <b>{incomingCount}</b>}</button><button role="tab" aria-selected={tab === "outgoing"} className={tab === "outgoing" ? "active" : ""} onClick={() => setTab("outgoing")}>Outgoing</button><button role="tab" aria-selected={tab === "active"} className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>Active</button></div>
-      <div className="deal-workspace-list">{deals.length ? deals.map((deal) => <DealCard key={deal.id} deal={deal} game={game} playerId={playerId} disabled={disabled} respond={respondToDeal} withdraw={cancelProposal} />) : <div className="deal-empty"><b>{tab === "incoming" ? "No incoming proposals" : tab === "outgoing" ? "No proposals awaiting a reply" : "No active agreements"}</b><p>{tab === "incoming" ? "New offers will appear here immediately." : "Create a deal to shape this round."}</p></div>}</div>
+      <div className="deal-workspace-list">{deals.length ? deals.map((deal) => <DealCard key={deal.id} deal={deal} game={game} playerId={playerId} disabled={disabled} negotiationOpen={negotiationOpen} respond={respondToDeal} withdraw={cancelProposal} />) : <div className="deal-empty"><b>{tab === "incoming" ? "No incoming proposals" : tab === "outgoing" ? "No proposals awaiting a reply" : "No active agreements"}</b><p>{tab === "incoming" ? "New offers will appear here immediately." : negotiationOpen ? "Create a deal to shape this round." : "Dealmaking reopens during Negotiation."}</p></div>}</div>
     </>}
   </section>;
 }

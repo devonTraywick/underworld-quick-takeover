@@ -12,11 +12,14 @@ interface Props {
   disabled: boolean;
   unreadPublic?: number;
   unreadPrivate?: number;
+  active?: boolean;
   requestedChannel?: "public" | "private";
+  requestedRecipientId?: string | undefined;
+  onRecipientChange?: (playerId: string) => void;
   onChannelViewed?: (channel: "public" | "private") => void;
 }
 
-export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate, disabled, unreadPublic = 0, unreadPrivate = 0, requestedChannel, onChannelViewed }: Props) {
+export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate, disabled, unreadPublic = 0, unreadPrivate = 0, active = false, requestedChannel, requestedRecipientId, onRecipientChange, onChannelViewed }: Props) {
   const [channel, setChannel] = useState<"public" | "private">("public");
   const rivals = state.room.players.filter((player) => player.id !== playerId);
   const [recipientId, setRecipientId] = useState(rivals[0]?.id ?? "");
@@ -27,24 +30,15 @@ export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate
   const viewedRef = useRef(onChannelViewed);
   viewedRef.current = onChannelViewed;
   const privateMessages = useMemo(() => privateState?.privateMessages ?? [], [privateState?.privateMessages]);
-  const messages = channel === "public" ? state.room.chats : privateMessages;
+  const messages = channel === "public" ? state.room.chats : privateMessages.filter((message) => (message.playerId === playerId && message.recipientId === recipientId) || (message.playerId === recipientId && message.recipientId === playerId));
 
   useEffect(() => { if (!recipientId && rivals[0]) setRecipientId(rivals[0].id); }, [recipientId, rivals]);
+  useEffect(() => { if (recipientId) onRecipientChange?.(recipientId); }, [onRecipientChange, recipientId]);
   useEffect(() => { if (followLatest.current) endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages.length]);
   useEffect(() => { followLatest.current = true; endRef.current?.scrollIntoView({ block: "nearest" }); }, [channel]);
   useEffect(() => { if (requestedChannel) setChannel(requestedChannel); }, [requestedChannel]);
-  useEffect(() => {
-    if (channel === "public") viewedRef.current?.("public");
-  }, [channel, state.room.chats.length]);
-  useEffect(() => {
-    if (channel === "private") viewedRef.current?.("private");
-  }, [channel, privateMessages.length]);
-  useEffect(() => {
-    if (state.game?.phase === "negotiation") {
-      setChannel("public");
-      viewedRef.current?.("public");
-    }
-  }, [state.game?.round, state.game?.phase]);
+  useEffect(() => { if (requestedRecipientId && rivals.some((player) => player.id === requestedRecipientId)) setRecipientId(requestedRecipientId); }, [requestedRecipientId, rivals]);
+  useEffect(() => { if (active) viewedRef.current?.(channel); }, [active, channel, recipientId, messages.length]);
 
   return <section className="chat-panel panel">
     <header><div><span className="eyebrow">The wire</span><strong>{channel === "public" ? "Public room" : "Private line"}</strong></div><span className="secure-badge">{channel === "private" ? "Encrypted" : "Open"}</span></header>
@@ -52,7 +46,7 @@ export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate
       <button role="tab" aria-selected={channel === "public"} className={channel === "public" ? "active" : ""} onClick={() => { setChannel("public"); onChannelViewed?.("public"); }}>Public{unreadPublic > 0 && <b className="attention-count" aria-label={`${unreadPublic} unread public messages`}>{unreadPublic}</b>}</button>
       <button role="tab" aria-selected={channel === "private"} className={channel === "private" ? "active" : ""} onClick={() => { setChannel("private"); onChannelViewed?.("private"); }}>Private{unreadPrivate > 0 && <b className="attention-count" aria-label={`${unreadPrivate} unread private messages`}>{unreadPrivate}</b>}</button>
     </div>
-    {channel === "private" && <label className="wire-recipient">Direct line<select value={recipientId} onChange={(event) => setRecipientId(event.target.value)}>{rivals.map((player) => <option key={player.id} value={player.id}>{player.nickname}</option>)}</select></label>}
+    {channel === "private" && <label className="wire-recipient">Direct line<select value={recipientId} onChange={(event) => { setRecipientId(event.target.value); onRecipientChange?.(event.target.value); }}>{rivals.map((player) => <option key={player.id} value={player.id}>{player.nickname}</option>)}</select></label>}
     <div className="chat-log" ref={logRef} onScroll={() => { const log = logRef.current; if (log) followLatest.current = log.scrollHeight - log.scrollTop - log.clientHeight < 48; }} aria-live="polite">
       {messages.length === 0 && <p className="empty-copy">{channel === "public" ? "No one has broken the silence." : "This line is quiet."}</p>}
       {messages.map((message) => {

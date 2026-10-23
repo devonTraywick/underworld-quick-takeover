@@ -11,8 +11,10 @@ import { PhaseAnnouncement } from "../components/phase-announcement";
 import { CinematicReveal } from "../components/cinematic-reveal";
 import { CopyButton } from "../components/copy-button";
 import { MissionBriefing } from "../components/mission-briefing";
+import { SocialNotifications } from "../components/social-notifications";
 import { useGame } from "../lib/use-game";
 import type { PrivateState, PublicGame, PublicState } from "../lib/types";
+import { useSocialAttention, type SocialNotice, type SocialSection } from "../lib/social-attention";
 import { CARD_GUIDE, PHASE_INSTRUCTIONS, SCORE_RULES, TIEBREAK_COPY } from "../lib/game-guide";
 import { OBJECTIVE_NAMES, objectiveExplanation } from "../lib/objectives";
 import { getAudioPreferences, playCue, setAudioPreferences, unlockAudio } from "../lib/audio";
@@ -38,30 +40,6 @@ function AttentionAudio({ state, privateState, countdown }: { state: PublicState
   useEffect(() => { const key = `${game.matchId}:${game.round}:${game.phase}`; if (countdown !== null && countdown <= 5_000 && countdown > 0 && warned.current !== key) { warned.current = key; playCue("countdown"); } }, [countdown, game.matchId, game.phase, game.round]);
   useEffect(() => { if (isSubmitted && !submitted.current) playCue(game.phase === "draft" ? "card-lock" : "deploy"); submitted.current = isSubmitted; }, [game.phase, isSubmitted]);
   return null;
-}
-
-function useAttention(state: PublicState | null, privateState: PrivateState | null, playerId: string) {
-  const key = `underworld.attention.${state?.room.code ?? "none"}.${playerId || "none"}`;
-  const [seen, setSeen] = useState<{ publicIds: string[]; privateIds: string[]; objectiveRound: number }>(() => ({ publicIds: [], privateIds: [], objectiveRound: 0 }));
-  useEffect(() => {
-    try { const saved = localStorage.getItem(key); if (saved) setSeen(JSON.parse(saved)); }
-    catch { /* Ignore damaged client-only attention state. */ }
-  }, [key]);
-  const persist = (next: typeof seen) => { setSeen(next); localStorage.setItem(key, JSON.stringify(next)); };
-  const publicIncoming = (state?.room.chats ?? []).filter((message) => message.playerId !== playerId);
-  const privateIncoming = (privateState?.privateMessages ?? []).filter((message) => message.playerId !== playerId);
-  const incomingDeals = privateState?.deals.filter((deal) => deal.recipientId === playerId && deal.status === "pending" && deal.round === state?.game?.round).length ?? 0;
-  const latestObjectiveRound = Math.max(0, ...((state?.game?.revealLog ?? []).filter((entry) => entry.playerId === playerId && entry.successful).map((entry) => entry.round)));
-  return {
-    unreadPublic: publicIncoming.filter((message) => !seen.publicIds.includes(message.id)).length,
-    unreadPrivate: privateIncoming.filter((message) => !seen.privateIds.includes(message.id)).length,
-    incomingDeals,
-    objectiveProgress: latestObjectiveRound > seen.objectiveRound,
-    markViewed: (channel: "public" | "private") => persist(channel === "public"
-      ? { ...seen, publicIds: publicIncoming.map((message) => message.id) }
-      : { ...seen, privateIds: privateIncoming.map((message) => message.id) }),
-    markObjectives: () => persist({ ...seen, objectiveRound: latestObjectiveRound }),
-  };
 }
 
 const PHASE_GUIDANCE: Record<PublicGame["phase"], { title: string; copy: string }> = {
@@ -96,7 +74,9 @@ export default function Home() {
   const [roomCode, setRoomCode] = useState("");
   const [mode, setMode] = useState<"create" | "join">("create");
   const [mobileOverlay, setMobileOverlay] = useState<"objectives" | "wire" | null>(null);
-  const [negotiationView, setNegotiationView] = useState<"public" | "private" | "deals">("public");
+  const [negotiationView, setNegotiationView] = useState<SocialSection>("public");
+  const [socialRivalId, setSocialRivalId] = useState<string | undefined>();
+  const [dealComposeKey, setDealComposeKey] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -107,7 +87,7 @@ export default function Home() {
   const [missionNotice, setMissionNotice] = useState<string | null>(null);
   const priorMissionProgress = useRef<Record<string, number> | null>(null);
   const playerId = game.session?.playerId ?? "";
-  const attention = useAttention(game.publicState, game.privateState, playerId);
+  const attention = useSocialAttention(game.publicState, game.privateState, playerId);
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("room");
@@ -124,7 +104,6 @@ export default function Home() {
     setMissionNotice(`${OBJECTIVE_NAMES[advanced.id] ?? advanced.id}: ${advanced.current} of ${advanced.target}${advanced.completed ? " — complete" : ""}`); playCue("success");
     const timer = window.setTimeout(() => setMissionNotice(null), 3_500); return () => window.clearTimeout(timer);
   }, [game.privateState]);
-  useEffect(() => { if (game.publicState?.game?.phase !== "negotiation" && mobileOverlay === "wire") setMobileOverlay(null); }, [game.publicState?.game?.phase, mobileOverlay]);
 
   if (!game.publicState) return <main className={`entry-page ${game.busy || !game.connected ? "is-loading" : ""}`}>
     <Onboarding />
@@ -150,6 +129,12 @@ export default function Home() {
 
   const publicGame = game.publicState.game;
   const me = publicGame.players.find((player) => player.id === game.session?.playerId);
+  const openSocial = (section: SocialSection, rivalId?: string, composeDeal = false) => {
+    const resolvedRival = rivalId ?? socialRivalId ?? publicGame.players.find((player) => player.id !== playerId)?.id;
+    setNegotiationView(section); if (resolvedRival) setSocialRivalId(resolvedRival); setMobileOverlay("wire"); attention.markViewed(section, resolvedRival);
+    if (composeDeal) setDealComposeKey((value) => value + 1);
+  };
+  const openNotice = (notice: SocialNotice) => { attention.dismiss(notice.key); openSocial(notice.section, notice.actorId); };
   const needsMapTarget = publicGame.phase === "operations" && ["infiltrate", "fortify", "sabotage", "double-cross"].includes(game.privateState?.draftedCard?.type ?? "");
   const selectedDistrict = publicGame.phase === "operations" ? (needsMapTarget ? operationDistrict : undefined) : revealEffect?.districtId;
   return <main className={`game-page phase-${publicGame.phase}`}>
@@ -161,10 +146,11 @@ export default function Home() {
       <div className="compact-brand"><div className="brand-seal small"><span>U·Q</span></div><div><span>Underworld</span><b>Quick Takeover</b></div></div>
       <div className="round-display"><span>Round</span><b>{publicGame.round}<em>/5</em></b></div>
       <div className="phase-display"><span>{publicGame.phase.replaceAll("-", " ")}</span>{countdown !== null && <b className={countdown < 5_000 ? "urgent" : ""}>{Math.ceil(countdown / 1000)}s</b>}</div>
-      <div className="roster-strip" aria-label="Player roster">{publicGame.players.map((player) => <div key={player.id} className={player.id === me?.id ? "current" : ""}><span className={`boss-avatar boss-${player.seat}`} /><b>{player.nickname}</b><em>{player.influence}</em></div>)}</div>
+      <div className="roster-strip" aria-label="Player roster">{publicGame.players.map((player) => <button type="button" key={player.id} className={player.id === me?.id ? "current" : ""} disabled={player.id === playerId} onClick={() => openSocial("private", player.id)} aria-label={player.id === playerId ? `${player.nickname}, your syndicate` : `Open private line with ${player.nickname}`}><span className={`boss-avatar boss-${player.seat}`} /><b>{player.nickname}</b><em>{player.influence}</em></button>)}</div>
       <div className="player-chip"><span className={`boss-avatar boss-${me?.seat ?? 0}`} /><span>{me?.nickname}<small><b className={game.connected ? "online" : "offline"}>{game.connected ? "Live" : "Reconnecting"}</b> · {me?.influence ?? 0} Influence</small></span><button className="match-menu-trigger" onClick={() => setMenuOpen(true)} aria-label="Open match menu">☰</button></div>
     </header>
-    <PhaseGuide state={game.publicState} privateState={game.privateState} playerId={playerId} countdown={countdown} incomingDeals={attention.incomingDeals} />
+    <PhaseGuide state={game.publicState} privateState={game.privateState} playerId={playerId} countdown={countdown} incomingDeals={attention.pendingDeals} />
+    <SocialNotifications notices={attention.notices} game={publicGame} onOpen={openNotice} onDismiss={attention.dismiss} />
     <div className="command-center">
       <aside className={`boss-column ${mobileOverlay === "objectives" ? "mobile-open" : ""}`}>
         <button className="mobile-close" onClick={() => setMobileOverlay(null)} aria-label="Close objectives">×</button>
@@ -172,14 +158,16 @@ export default function Home() {
         {game.privateState && <Objectives privateState={game.privateState} game={publicGame} playerId={game.session?.playerId ?? ""} />}
       </aside>
       <section className={`map-column ${needsMapTarget && !game.privateState?.operation ? "target-required" : ""}`}><CityMap game={publicGame} selected={selectedDistrict} effect={revealEffect} currentPlayerId={playerId} operationName={publicGame.phase === "operations" ? CARD_COPY[game.privateState?.draftedCard?.type ?? "infiltrate"].name : undefined} onSelect={needsMapTarget ? setOperationDistrict : undefined} /><div className="map-caption"><span>{needsMapTarget ? "Select a target" : "City control"}</span><p>{needsMapTarget ? "Tap an eligible district, then deploy your operation." : "Highest stake owns the district. A new tie leaves it contested."}</p></div></section>
-      <aside className={`social-column ${mobileOverlay === "wire" ? "mobile-open" : ""}`}>
-        <button className="mobile-close" onClick={() => setMobileOverlay(null)} aria-label="Close wire">×</button>
-        {publicGame.phase === "negotiation" && <nav className="negotiation-workspace-tabs" aria-label="Negotiation workspace"><button className={negotiationView === "public" ? "active" : ""} onClick={() => { setNegotiationView("public"); attention.markViewed("public"); }}>Public{attention.unreadPublic > 0 && <b>{attention.unreadPublic}</b>}</button><button className={negotiationView === "private" ? "active" : ""} onClick={() => { setNegotiationView("private"); attention.markViewed("private"); }}>Private{attention.unreadPrivate > 0 && <b>{attention.unreadPrivate}</b>}</button><button className={negotiationView === "deals" ? "active" : ""} onClick={() => setNegotiationView("deals")}>Deals{attention.incomingDeals > 0 && <b>{attention.incomingDeals}</b>}</button></nav>}
-        <div className={`workspace-chat ${negotiationView === "deals" ? "workspace-hidden" : ""}`}><ChatPanel requestedChannel={negotiationView === "private" ? "private" : "public"} state={game.publicState} privateState={game.privateState} playerId={playerId} onSend={game.sendChat} onSendPrivate={game.sendPrivateMessage} disabled={game.busy} unreadPublic={attention.unreadPublic} unreadPrivate={attention.unreadPrivate} onChannelViewed={attention.markViewed} /></div>
-        {publicGame.phase === "negotiation" && game.privateState && <div className={`workspace-deals ${negotiationView === "deals" ? "" : "workspace-hidden"}`}><DealPanel expanded={mobileOverlay === "wire"} game={publicGame} privateState={game.privateState} playerId={game.session?.playerId ?? ""}
+      <aside className={`social-column social-hub ${mobileOverlay === "wire" ? "mobile-open" : ""}`} aria-label="Social hub">
+        <button className="mobile-close" onClick={() => setMobileOverlay(null)} aria-label="Close social hub">×</button>
+        <header className="social-hub-heading"><span>The Wire</span><strong>Boss communications</strong></header>
+        <nav className="negotiation-workspace-tabs" aria-label="Social sections"><button className={negotiationView === "public" ? "active" : ""} onClick={() => openSocial("public")}>Public Wire{attention.unreadPublic > 0 && <b>{attention.unreadPublic}</b>}</button><button className={negotiationView === "private" ? "active" : ""} onClick={() => openSocial("private", socialRivalId)}>Private{attention.unreadPrivate > 0 && <b>{attention.unreadPrivate}</b>}</button><button className={negotiationView === "deals" ? "active" : ""} onClick={() => openSocial("deals")}>Deals{attention.unreadDeals > 0 && <b>{attention.unreadDeals}</b>}</button></nav>
+        <div className="social-context-actions">{negotiationView === "private" && publicGame.phase === "negotiation" && socialRivalId && <button className="social-context-deal" onClick={() => openSocial("deals", socialRivalId, true)}>Offer a deal to {publicGame.players.find((player) => player.id === socialRivalId)?.nickname}</button>}</div>
+        <div className={`workspace-chat ${negotiationView === "deals" ? "workspace-hidden" : ""}`}><ChatPanel active={mobileOverlay === "wire" && negotiationView !== "deals"} requestedChannel={negotiationView === "private" ? "private" : "public"} requestedRecipientId={socialRivalId} onRecipientChange={setSocialRivalId} state={game.publicState} privateState={game.privateState} playerId={playerId} onSend={game.sendChat} onSendPrivate={game.sendPrivateMessage} disabled={game.busy} unreadPublic={attention.unreadPublic} unreadPrivate={attention.unreadPrivate} onChannelViewed={(channel) => attention.markViewed(channel, channel === "private" ? socialRivalId : undefined)} /></div>
+        {game.privateState && <div className={`workspace-deals ${negotiationView === "deals" ? "" : "workspace-hidden"}`}><DealPanel expanded={mobileOverlay === "wire"} game={publicGame} privateState={game.privateState} playerId={game.session?.playerId ?? ""} negotiationOpen={publicGame.phase === "negotiation"} initialRecipientId={socialRivalId} composeRequest={dealComposeKey}
           disabled={game.busy} propose={game.proposeDeal} respond={game.respondDeal} withdraw={game.withdrawDeal} /></div>}
       </aside>
-      <nav className="city-actions" aria-label="City actions"><button onClick={() => { setMobileOverlay("objectives"); attention.markObjectives(); }}><span>◆</span>Missions <b>{game.privateState?.objectives.filter((objective) => objective.completed).length ?? 0}/3</b></button>{publicGame.phase === "negotiation" && <><button onClick={() => { setNegotiationView("deals"); setMobileOverlay("wire"); }}><span>♟</span>Make Deal{attention.incomingDeals > 0 && <b>{attention.incomingDeals}</b>}</button><button onClick={() => { setNegotiationView("public"); setMobileOverlay("wire"); attention.markViewed("public"); }}><span>✦</span>Send Message{attention.unreadPublic + attention.unreadPrivate > 0 && <b>{attention.unreadPublic + attention.unreadPrivate}</b>}</button></>}<button onClick={() => setMenuOpen(true)}><span>•••</span>More</button></nav>
+      <nav className="city-actions" aria-label="City actions"><button onClick={() => { setMobileOverlay("objectives"); attention.markObjectives(); }}><span>◆</span>Missions <b>{game.privateState?.objectives.filter((objective) => objective.completed).length ?? 0}/3</b></button><button className="social-entry" onClick={() => openSocial(publicGame.phase === "negotiation" ? "deals" : "public", undefined, publicGame.phase === "negotiation")}><span>✦</span>{publicGame.phase === "negotiation" ? "Make Deal" : "The Wire"}{attention.unreadPublic + attention.unreadPrivate + attention.unreadDeals > 0 && <b>{attention.unreadPublic + attention.unreadPrivate + attention.unreadDeals}</b>}</button><button onClick={() => setMenuOpen(true)}><span>•••</span>More</button></nav>
       <section className="action-dock">
         <AnimatePresence mode="wait"><motion.div key={`${publicGame.round}-${publicGame.phase}`} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}>
           <PhasePanel state={game.publicState} privateState={game.privateState} playerId={playerId} busy={game.busy}
@@ -187,7 +175,7 @@ export default function Home() {
         </motion.div></AnimatePresence>
       </section>
     </div>
-    <nav className={`mobile-utility ${publicGame.phase === "negotiation" ? "negotiation-utility" : ""}`} aria-label="Command panels"><button onClick={() => { setMobileOverlay(mobileOverlay === "objectives" ? null : "objectives"); attention.markObjectives(); }}>Missions{attention.objectiveProgress && <i className="attention-dot" />}</button>{publicGame.phase === "negotiation" ? <><button onClick={() => { setNegotiationView("public"); setMobileOverlay("wire"); attention.markViewed("public"); }}>Chat{attention.unreadPublic + attention.unreadPrivate > 0 && <b className="attention-count">{attention.unreadPublic + attention.unreadPrivate}</b>}</button><button className={attention.incomingDeals > 0 ? "has-alert" : ""} onClick={() => { setNegotiationView("deals"); setMobileOverlay("wire"); }}>Deals{attention.incomingDeals > 0 && <b className="attention-count">{attention.incomingDeals}</b>}</button></> : <button onClick={() => { setMobileOverlay(mobileOverlay === "wire" ? null : "wire"); attention.markViewed("public"); }}>The Wire{attention.unreadPublic + attention.unreadPrivate > 0 && <b className="attention-count">{attention.unreadPublic + attention.unreadPrivate}</b>}</button>}</nav>
+    <nav className="mobile-utility" aria-label="Command panels"><button onClick={() => { setMobileOverlay(mobileOverlay === "objectives" ? null : "objectives"); attention.markObjectives(); }}>Missions{attention.objectiveProgress && <i className="attention-dot" />}</button><button className={attention.unreadDeals > 0 ? "has-alert" : ""} onClick={() => openSocial(publicGame.phase === "negotiation" ? "deals" : "public", undefined, publicGame.phase === "negotiation")}><span>{publicGame.phase === "negotiation" ? "Make Deal" : "The Wire"}</span>{attention.unreadPublic + attention.unreadPrivate + attention.unreadDeals > 0 && <b className="attention-count">{attention.unreadPublic + attention.unreadPrivate + attention.unreadDeals}</b>}</button></nav>
     <button className="mobile-menu-trigger" onClick={() => setMenuOpen(true)} aria-label="Open match menu">☰</button>
     {menuOpen && <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="Match menu"><section className="match-menu panel"><span className="eyebrow">Match control</span><h2>The back room</h2><button onClick={() => setMenuOpen(false)}>Resume</button><button onClick={() => { setHelpOpen(true); setMenuOpen(false); }}>How to play & score</button><button onClick={() => { setHistoryOpen(true); setMenuOpen(false); }}>Review round history</button>{game.publicState.room.hostPlayerId === game.session?.playerId && <button className="danger-action" onClick={async () => { if (window.confirm("End the match? A 20-second vote will pause play and may produce provisional final results.")) await game.proposeEndMatch(); setMenuOpen(false); }}>End Match</button>}<button onClick={() => void game.leaveRoom()}>Leave Match</button><button aria-pressed={soundMuted} onClick={() => { const next = !soundMuted; setSoundMuted(next); setAudioPreferences({ muted: next, effectsVolume }); if (!next) void unlockAudio(); }}>{soundMuted ? "Master sound · Muted" : "Master sound · On"}</button><label className="volume-control">Effects volume <input aria-label="Effects volume" type="range" min="0" max="100" value={Math.round(effectsVolume * 100)} onChange={(event) => { const next = Number(event.target.value) / 100; setEffectsVolume(next); setAudioPreferences({ muted: soundMuted, effectsVolume: next }); }} /></label><button onClick={() => { setMenuOpen(false); window.dispatchEvent(new Event("underworld:tutorial")); }}>Replay Tutorial</button></section></div>}
     {helpOpen && <GameHelp onClose={() => setHelpOpen(false)} />}

@@ -85,7 +85,7 @@ test("invite copy confirms only after success, resets, and offers a failure fall
   await expect(page.locator(".copy-fallback input")).toHaveValue(/room=/);
 });
 
-test("mobile negotiation workspace supports private chat and a complete deal response", async ({ browser }) => {
+test("unified social hub preserves unread activity, opens notifications, and completes a deal", async ({ browser }) => {
   test.setTimeout(120_000);
   const hostContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -96,18 +96,27 @@ test("mobile negotiation workspace supports private chat and a complete deal res
   await acceptBriefings(host, guest);
   await waitForPhaseReady(host); await waitForPhaseReady(guest);
 
-  await guest.getByRole("button", { name: "Chat" }).click();
-  await host.getByRole("navigation", { name: "City actions" }).getByRole("button", { name: /Send Message/ }).click();
-  await host.getByRole("tab", { name: "Private" }).click();
+  await guest.getByRole("button", { name: "Make Deal" }).click();
+  await expect(guest.getByRole("complementary", { name: "Social hub" })).toBeVisible();
+  const rivalPortrait = host.getByRole("button", { name: "Open private line with Crimson Guest House" });
+  await rivalPortrait.focus(); await host.keyboard.press("Enter");
+  await expect(host.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Private" })).toHaveClass(/active/);
   await host.getByRole("textbox", { name: "Private message" }).fill("A private offer is waiting.");
   await host.getByRole("button", { name: "Send message", exact: true }).click();
-  await host.getByRole("button", { name: "Close wire" }).click();
-  const workspace = guest.getByRole("navigation", { name: "Negotiation workspace" });
-  await expect(workspace.getByRole("button", { name: /Private/ }).locator("b")).toHaveText("1");
-  await workspace.getByRole("button", { name: /Private/ }).click();
+  await host.getByRole("textbox", { name: "Private message" }).fill("Two crews. Midnight.");
+  await host.getByRole("button", { name: "Send message", exact: true }).click();
+  const workspace = guest.getByRole("navigation", { name: "Social sections" });
+  await expect(workspace.getByRole("button", { name: /Private/ }).locator("b")).toHaveText("2");
+  await expect(guest.getByText("NEW PRIVATE MESSAGE")).toBeVisible();
+  await expect(guest.getByText("+1 more waiting")).toBeVisible();
+  await guest.reload();
+  await expect(guest.getByText("NEW PRIVATE MESSAGE")).toBeVisible();
+  await guest.getByRole("button", { name: "Open", exact: true }).click();
   await expect(guest.getByText("A private offer is waiting.")).toBeVisible();
+  await expect(guest.getByText("Two crews. Midnight.")).toBeVisible();
+  await expect(guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveCount(0);
 
-  await workspace.getByRole("button", { name: "Deals" }).click();
+  await guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Deals" }).click();
   const deals = guest.getByRole("region", { name: "Deals workspace" });
   await deals.getByRole("button", { name: "Create Deal" }).click();
   await deals.getByRole("button", { name: "Continue" }).click();
@@ -116,7 +125,8 @@ test("mobile negotiation workspace supports private chat and a complete deal res
   await deals.getByRole("button", { name: "Continue" }).click();
   await deals.getByRole("button", { name: "Send proposal" }).click();
   await expect(deals).toContainText("Proposal sent to Velvet Host Family");
-  await host.getByRole("navigation", { name: "City actions" }).getByRole("button", { name: /Make Deal/ }).click();
+  await expect(host.getByText("DEAL PROPOSED")).toBeVisible();
+  await host.getByRole("button", { name: "Review" }).click();
   const hostDeals = host.getByRole("region", { name: "Deals workspace" });
   await hostDeals.getByRole("button", { name: "Accept proposal" }).click();
   await expect(hostDeals).toContainText("agreement is now active");
@@ -163,23 +173,24 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   expect(await guest.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
   expect(await guest.locator(".city-art").evaluate((node) => parseFloat(getComputedStyle(node).animationDuration))).toBeLessThan(0.001);
 
-  await guest.getByRole("button", { name: "Chat" }).click();
-  await expect(guest.getByRole("navigation", { name: "Negotiation workspace" })).toBeVisible();
-  await expect(guest.getByRole("button", { name: "Public" })).toHaveClass(/active/);
-  await host.getByRole("navigation", { name: "City actions" }).getByRole("button", { name: /Send Message/ }).click();
-  await host.getByRole("tab", { name: "Private" }).click();
+  await guest.getByRole("button", { name: "Make Deal" }).click();
+  await expect(guest.getByRole("navigation", { name: "Social sections" })).toBeVisible();
+  await expect(guest.getByRole("button", { name: "Deals" })).toHaveClass(/active/);
+  await host.getByRole("navigation", { name: "City actions" }).getByRole("button", { name: /Make Deal/ }).click();
+  await host.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Private" }).click();
   await host.getByRole("textbox", { name: "Private message" }).fill("The docks are quiet tonight.");
   await host.getByRole("button", { name: "Send message", exact: true }).click();
-  await host.getByRole("button", { name: "Close wire" }).click();
-  await expect(guest.getByRole("navigation", { name: "Negotiation workspace" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveText("1");
-  await guest.getByRole("navigation", { name: "Negotiation workspace" }).getByRole("button", { name: /Private/ }).click();
+  await host.getByRole("button", { name: "Close social hub" }).click();
+  await expect(guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveText("1");
+  await guest.getByRole("button", { name: "Open", exact: true }).click();
   await expect(guest.getByText("The docks are quiet tonight.")).toBeVisible();
-  await expect(guest.getByRole("navigation", { name: "Negotiation workspace" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveCount(0);
+  await expect(guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveCount(0);
 
-  await guest.getByRole("navigation", { name: "Negotiation workspace" }).getByRole("button", { name: "Deals" }).click();
+  await guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Deals" }).click();
   const guestDeals = guest.getByRole("region", { name: "Deals workspace" });
   await expect(guestDeals).toBeVisible();
-  await expect(guest.getByRole("navigation", { name: "Negotiation workspace" })).toBeVisible();
+  await expect(guest.getByRole("navigation", { name: "Social sections" })).toBeVisible();
+  await guestDeals.getByRole("button", { name: "Cancel" }).click();
   await guestDeals.getByRole("button", { name: "Create Deal" }).click();
   await expect(guestDeals).toContainText("Proposal step 1 of 4");
   await guest.screenshot({ path: "test-results/negotiation-deals-mobile.png", fullPage: false });
@@ -194,7 +205,8 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   expect(createDealSize?.height).toBeGreaterThanOrEqual(40);
 
   const hostDeals = host.getByRole("region", { name: "Deals workspace" });
-  await host.getByRole("navigation", { name: "City actions" }).getByRole("button", { name: /Make Deal/ }).click();
+  await expect(host.getByText("DEAL PROPOSED")).toBeVisible();
+  await host.getByRole("button", { name: "Review" }).click();
   await expect(hostDeals).toContainText("New proposal received");
   await hostDeals.getByRole("button", { name: "Accept proposal" }).click();
   await guestDeals.getByRole("tab", { name: "Active" }).click();
@@ -210,8 +222,10 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(guestDeals).toContainText("New proposal received");
   await guestDeals.getByRole("button", { name: "Reject proposal" }).click();
   await expect(guestDeals).toContainText("Declined");
-  await host.getByRole("button", { name: "Close wire" }).click();
-  await guest.getByRole("button", { name: "Close wire" }).click();
+  await expect(host.getByText("DEAL REJECTED")).toBeVisible();
+  await host.getByRole("button", { name: "Dismiss notification" }).click();
+  await host.getByRole("button", { name: "Close social hub" }).click();
+  await guest.getByRole("button", { name: "Close social hub" }).click();
   await expect(guestDeals).toBeHidden();
 
   await guest.getByRole("button", { name: "Lock in & continue" }).click();
@@ -234,6 +248,9 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(host.locator(".game-page")).toHaveClass(/phase-draft/);
   await expect(host.locator(".submission-note")).toContainText("players ready");
   await waitForPhaseReady(host); await waitForPhaseReady(guest);
+  await guest.getByRole("button", { name: "The Wire" }).click();
+  await expect(guest.getByRole("complementary", { name: "Social hub" })).toBeVisible();
+  await guest.getByRole("button", { name: "Close social hub" }).click();
   await host.locator(".action-card").first().getByText("More details").click();
   await expect(host.locator(".action-card").first()).toContainText("Target");
   await expect(host.locator(".action-card").first()).toContainText("Expected benefit");
