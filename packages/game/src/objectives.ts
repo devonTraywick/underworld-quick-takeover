@@ -96,3 +96,25 @@ export function isObjectiveComplete(state: GameState, player: PlayerState, objec
       return false;
   }
 }
+
+export function objectiveProgress(state: GameState, player: PlayerState, objective: Objective): { current: number; target: number; completed: boolean } {
+  const owned = controls(state, player.id);
+  let current = 0; let target = 1;
+  switch (objective.id) {
+    case "city-crown": current = owned.length; target = Math.ceil(state.activeDistricts.length / 2); break;
+    case "kingmaker": current = Number(owned.includes("downtown")) + Number(owned.some((id) => id !== "downtown")); target = 2; break;
+    case "deep-roots": current = state.activeDistricts.filter((id) => stakeAt(state, id, player.id) >= 4).length; target = state.activeDistricts.length === 3 ? 2 : 3; break;
+    case "untouchable": current = Number(player.influence >= 7) + Number(owned.length >= 1); target = 2; break;
+    case "mastermind": current = new Set(player.successfulOperationRounds).size; target = 5; break;
+    case "shadow-broker": current = player.surveillanceEvents + player.honoredDealEvents; target = 3; break;
+    case "district-boss": current = Number(objective.districtId !== undefined && owned.includes(objective.districtId)); break;
+    case "cash-reserve": current = player.influence; target = 4; break;
+    case "citywide-network": current = state.activeDistricts.filter((id) => stakeAt(state, id, player.id) > 0).length; target = state.activeDistricts.length === 7 ? 5 : state.activeDistricts.length; break;
+    case "wrecking-crew": current = new Set(player.successfulSabotageRounds).size; target = 2; break;
+    case "honorable-word": current = player.honoredDealEvents; target = 2; break;
+    case "reliable-operator": current = new Set(player.successfulOperationRounds).size; target = 4; break;
+    case "strongholds": current = state.activeDistricts.filter((id) => stakeAt(state, id, player.id) >= 3).length; target = 2; break;
+    case "knife-in-the-dark": current = Number(player.betrayedDeals >= 1) + Number(player.influence >= 2); target = 2; break;
+  }
+  return { current, target, completed: isObjectiveComplete(state, player, objective) };
+}

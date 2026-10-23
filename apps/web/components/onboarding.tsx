@@ -2,30 +2,33 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { CARD_GUIDE, SCORE_RULES, TIEBREAK_COPY } from "../lib/game-guide";
 
-const VERSION = 2;
+const VERSION = 3;
 const KEY = "underworld.tutorial.version";
-const STEPS = [
-  ["Welcome to the underworld", "Lead a syndicate through five rounds. Complete secret missions, run successful operations, and control districts to win.", "purpose", ["5 rounds", "Secret missions", "Control the city"]],
-  ["Take the city", "Stake is your presence in a district. The highest stake controls it; a new tie leaves it contested.", "map", ["Downtown", "+2 stake", "Your control"]],
-  ["Work The Wire", "Public messages reach the whole table. Private lines let you coordinate with one rival without exposing the conversation.", "wire", ["Public room", "Private line", "Send"]],
-  ["Make dangerous promises", "Propose Joint Operations, Non-Aggression, or Protection Pacts. Incoming terms require an explicit response.", "deals", ["Propose", "Accept", "Betray"]],
-  ["Draft in secret", "Choose one action card and Lock In. Rivals never see your preference before the server resolves the blind draft.", "draft", ["Choose", "Lock in", "Hidden"]],
-  ["Know your leverage", "Infiltrate adds stake. Fortify adds and shields stake. Sabotage removes rival stake. Shake Down gains Influence. Surveillance gathers private intelligence. Double Cross weaponizes a deal.", "cards", ["IN · FT · SB", "SD · SV · DX", "Six actions"]],
-  ["Deploy an operation", "Tap an eligible district, review the target, then deploy. The target dropdown remains available for accessibility.", "operation", ["Select district", "Preview target", "Deploy"]],
-  ["Watch the reveal", "Server-confirmed operations flip face-up one at a time. Follow stake, Influence, deal, and control changes on the map.", "reveal", ["Card flips", "Map reacts", "Outcome"]],
-  ["Protect your agenda", "Your primary mission is worth 10 points and each side job is worth 4. Only you can inspect them before the finale.", "objectives", ["Primary · 10", "Side job · 4", "Eyes only"]],
-  ["Close the books", "Final score combines missions, districts, and successful operations. The match menu lets the host call an end vote or any player leave safely.", "finale", ["Final ranking", "Rematch", "Match menu"]],
+interface TutorialStep { title: string; copy: string; target: string; labels: readonly [string, string, string]; tryIt?: string }
+const STEPS: readonly TutorialStep[] = [
+  { title: "Take control of the city", copy: "Make deals, play cards, and outsmart rival bosses. Earn the most points across five rounds to win.", target: "purpose", labels: ["5 rounds", "Most points wins", "2–8 bosses"] },
+  { title: "Build your power", copy: "Stakes are your presence in a district. The highest stake controls it; a new tie makes it contested, unless the current owner is still tied.", target: "map", labels: ["Downtown", "+2 stakes", "You take control"], tryIt: "Add 2 stakes" },
+  { title: "Make a deal", copy: "Use The Wire to talk publicly or privately. Deals are optional: honor them for rewards, or break them and accept the consequences.", target: "wire", labels: ["Public chat", "Private message", "Optional deal"] },
+  { title: "Choose a card", copy: "Secretly choose your preferred move. If two bosses want the same card, rotating priority decides who gets it and the server uses their next preference.", target: "draft", labels: ["Choose", "Lock in", "Hidden"] },
+  { title: "Know your cards", copy: "Every card shows its target, expected benefit, and exact rules. Influence helps with missions, deals, and tiebreakers—it is not worth points by itself.", target: "cards", labels: ["IN · FT · SB", "SD · SV · DX", "View rules"] },
+  { title: "Pick a target", copy: "Choose an eligible district or rival, then deploy. Everyone acts simultaneously and your move stays hidden until the reveal.", target: "operation", labels: ["Select target", "Review move", "Deploy"], tryIt: "Deploy demo move" },
+  { title: "Read the result", copy: "The reveal names the card, target, stake or Influence change, and whether it succeeded. Round History lets you review it later.", target: "reveal", labels: ["Infiltrate", "+2 stakes", "Success"] },
+  { title: "Follow your missions", copy: "Your private primary mission is worth 10 points. Two private side objectives are worth 4 points each; progress stays hidden until the finale.", target: "objectives", labels: ["Control 2 districts", "1 of 2 complete", "+10 points"] },
+  { title: "How scoring works", copy: "Missions, controlled districts, and successful operations create your score. The finale displays each source separately.", target: "score", labels: ["Mission · 10", "District · 2", "Operation · 1"] },
+  { title: "Win the takeover", copy: TIEBREAK_COPY, target: "finale", labels: ["Score breakdown", "Shared wins possible", "Rematch"] },
 ] as const;
 
 export function Onboarding() {
   const [mode, setMode] = useState<"closed" | "offer" | "tutorial">("closed");
   const [step, setStep] = useState(0);
+  const [tried, setTried] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const finish = () => { localStorage.setItem(KEY, String(VERSION)); setMode("closed"); };
   useEffect(() => {
     setMode(localStorage.getItem(KEY) === String(VERSION) ? "closed" : "offer");
-    const replay = () => { setStep(0); setMode("tutorial"); };
+    const replay = () => { setStep(0); setTried(false); setMode("tutorial"); };
     window.addEventListener("underworld:tutorial", replay);
     return () => window.removeEventListener("underworld:tutorial", replay);
   }, []);
@@ -45,8 +48,8 @@ export function Onboarding() {
     {mode === "offer" ? <motion.section ref={cardRef} tabIndex={-1} className="tutorial-offer panel" role="dialog" aria-modal="true" aria-labelledby="tutorial-offer-title" initial={{ y: 20 }} animate={{ y: 0 }}>
       <span className="eyebrow">First night in the city?</span><h2 id="tutorial-offer-title">Learn the takeover</h2><p>A short interactive briefing demonstrates every phase without touching a live match or revealing another player’s secrets.</p><div className="dialog-actions"><button className="text-button" onClick={finish}>Skip tutorial</button><button className="gold-button" onClick={() => setMode("tutorial")}>Start tutorial</button></div>
     </motion.section> : <motion.section ref={cardRef} tabIndex={-1} className="tutorial-card panel" role="dialog" aria-modal="true" aria-labelledby="tutorial-title" initial={{ scale: .97, y: 12 }} animate={{ scale: 1, y: 0 }}>
-      <div className="tutorial-stage" data-tutorial-target={current[2]} aria-hidden="true"><div className="tutorial-demo-map" /><div className="tutorial-spotlight"><span>{current[3][0]}</span><b>{current[3][1]}</b><em>{current[3][2]}</em></div></div>
-      <div className="tutorial-copy"><span className="eyebrow">Family briefing · {step + 1}/{STEPS.length}</span><h2 id="tutorial-title">{current[0]}</h2><p>{current[1]}</p><div className="progress-dots" aria-hidden="true">{STEPS.map((_, index) => <i key={index} className={index <= step ? "active" : ""} />)}</div><div className="tutorial-actions"><button className="text-button" onClick={finish}>Skip</button><button className="outline-button" disabled={step === 0} onClick={() => setStep(step - 1)}>Back</button><button className="gold-button" onClick={() => step === STEPS.length - 1 ? finish() : setStep(step + 1)}>{step === STEPS.length - 1 ? "Enter the city" : "Next"}</button></div><small>Use ← and → to navigate. Esc skips.</small></div>
+      <div className="tutorial-stage" data-tutorial-target={current.target} aria-hidden="true"><div className="tutorial-demo-map" /><div className={`tutorial-spotlight ${tried ? "is-tried" : ""}`}><span>{current.labels[0]}</span><b>{tried && current.tryIt ? "Done — the city reacts" : current.labels[1]}</b><em>{current.labels[2]}</em></div></div>
+      <div className="tutorial-copy"><span className="eyebrow">Family briefing · {step + 1}/{STEPS.length}</span><h2 id="tutorial-title">{current.title}</h2><p>{current.copy}</p>{current.target === "cards" && <div className="tutorial-card-list">{Object.values(CARD_GUIDE).map((card) => <span key={card.symbol}><b>{card.name}</b>{card.summary}</span>)}</div>}{current.target === "score" && <div className="tutorial-score-list">{SCORE_RULES.map(([source, points]) => <span key={source}>{source}<b>{points}</b></span>)}</div>}{current.tryIt && <button className="try-button" onClick={() => setTried(true)} disabled={tried}>{tried ? "Demo complete" : `Try it · ${current.tryIt}`}</button>}<div className="progress-dots" aria-hidden="true">{STEPS.map((_, index) => <i key={index} className={index <= step ? "active" : ""} />)}</div><div className="tutorial-actions"><button className="text-button" onClick={finish}>Skip</button><button className="outline-button" disabled={step === 0} onClick={() => { setTried(false); setStep(step - 1); }}>Back</button><button className="gold-button" onClick={() => { setTried(false); step === STEPS.length - 1 ? finish() : setStep(step + 1); }}>{step === STEPS.length - 1 ? "Enter the city" : "Next"}</button></div><small>Use ← and → to navigate. Esc skips.</small></div>
     </motion.section>}
   </motion.div>}</AnimatePresence>;
 }

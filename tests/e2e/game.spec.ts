@@ -38,15 +38,19 @@ test("the guided introduction is complete and skippable", async ({ page }) => {
   const offer = page.getByRole("dialog", { name: "Learn the takeover" });
   await expect(offer).toContainText("without touching a live match");
   await offer.getByRole("button", { name: "Start tutorial" }).click();
-  const dialog = page.getByRole("dialog", { name: "Welcome to the underworld" });
+  const dialog = page.locator(".tutorial-card");
   await expect(dialog).toContainText("Family briefing · 1/10");
   await page.screenshot({ path: "test-results/tutorial-desktop.png", fullPage: false });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "test-results/tutorial-mobile.png", fullPage: false });
   await dialog.getByRole("button", { name: "Next" }).click();
-  await expect(page.getByRole("dialog", { name: "Take the city" })).toContainText("2/10");
+  await expect(page.getByRole("dialog", { name: "Build your power" })).toContainText("2/10");
+  await page.getByRole("button", { name: "Try it · Add 2 stakes" }).click();
+  await expect(page.getByText("Done — the city reacts")).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
-  await expect(page.getByRole("dialog", { name: "Welcome to the underworld" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Take control of the city" })).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("dialog", { name: "Build your power" })).toBeVisible();
   await page.getByRole("button", { name: "Skip" }).click();
   await expect(page.getByRole("region", { name: "Enter a game room" })).toBeVisible();
   await page.reload();
@@ -63,9 +67,9 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(host.getByRole("heading", { name: "2 of 8 syndicates" })).toBeVisible();
   await host.getByRole("button", { name: "Begin takeover" }).click();
   await expect(host.getByRole("heading", { name: "Make your promises" })).toBeVisible();
-  await expect(guest.locator(".phase-guide")).toContainText("NEGOTIATION — Make your deals");
+  await expect(guest.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");
   await expect(host.locator(".game-page")).toHaveClass(/phase-negotiation/);
-  await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION — Make your deals");
+  await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");
   await host.screenshot({ path: "test-results/phase-negotiation-desktop.png", fullPage: false });
   await guest.screenshot({ path: "test-results/phase-negotiation-mobile.png", fullPage: false });
   await expect(host.locator(".objective-panel .objective-item")).toHaveCount(3);
@@ -87,7 +91,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(guest.getByRole("tab", { name: /Private/ }).locator(".attention-count")).toHaveCount(0);
 
   await guest.reload();
-  await expect(guest.locator(".phase-guide")).toContainText("NEGOTIATION — Make your deals");
+  await expect(guest.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");
   await guest.getByRole("button", { name: "Missions" }).click();
   await expect(guest.locator(".objective-panel .objective-item")).toHaveCount(3);
   await guest.getByRole("button", { name: "Close objectives" }).click();
@@ -99,6 +103,10 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(host.getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
   await expect(guest.getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
   await expect(host.locator(".game-page")).toHaveClass(/phase-draft/);
+  await expect(host.locator(".submission-note")).toContainText("players ready");
+  await host.locator(".action-card").first().getByText("More details").click();
+  await expect(host.locator(".action-card").first()).toContainText("Target");
+  await expect(host.locator(".action-card").first()).toContainText("Expected benefit");
   await host.screenshot({ path: "test-results/phase-draft-desktop.png", fullPage: false });
   await guest.screenshot({ path: "test-results/phase-draft-mobile.png", fullPage: false });
 

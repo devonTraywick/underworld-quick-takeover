@@ -1,5 +1,6 @@
 import type { PlayerId } from "@underworld/shared";
 import type { GameState } from "./types.js";
+import { objectiveProgress } from "./objectives.js";
 
 export interface PublicProjection {
   matchId: string;
@@ -41,7 +42,7 @@ export function projectPrivate(state: GameState, playerId: PlayerId) {
   if (!player) throw new Error("Unknown player");
   return {
     playerId,
-    objectives: structuredClone(player.objectives),
+    objectives: player.objectives.map((objective) => ({ ...structuredClone(objective), ...objectiveProgress(state, player, objective) })),
     draftedCard: player.draftedCard ? structuredClone(player.draftedCard) : null,
     operation: player.operation ? structuredClone(player.operation) : null,
     draftPreferences: structuredClone(state.draft.preferences[playerId] ?? []),

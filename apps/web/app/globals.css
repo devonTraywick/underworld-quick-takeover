@@ -439,3 +439,29 @@ html:has(.game-page), body:has(.game-page) { height: 100%; overflow: hidden; ove
   .entry-card input { min-height: 42px; padding: .62rem .8rem; }
   .entry-card .gold-button { min-height: 43px; }
 }
+
+/* First-time clarity and in-game rules reference */
+.tutorial-card-list { display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin:.45rem 0 .7rem;max-height:150px;overflow:auto; }
+.tutorial-card-list span { padding:.42rem;border-left:2px solid var(--gold);background:#0d0f13;color:var(--muted);font-size:.55rem;line-height:1.35; }
+.tutorial-card-list b { display:block;color:var(--ivory);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em; }
+.tutorial-score-list,.help-score { display:grid;gap:.3rem;margin:.5rem 0 .9rem; }
+.tutorial-score-list span,.help-score span { display:flex;justify-content:space-between;padding:.45rem .6rem;background:#0d0f13;color:var(--muted);font-size:.62rem; }
+.tutorial-score-list b,.help-score b { color:var(--gold-bright); }
+.try-button { align-self:flex-start;margin:.15rem 0 .7rem;padding:.55rem .8rem;border:1px solid var(--teal);background:rgba(55,107,112,.16);color:var(--ivory);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em; }
+.tutorial-spotlight.is-tried { border-color:#90c2ad;box-shadow:0 0 40px rgba(94,173,139,.4); }
+.card-exact { display:grid;gap:.15rem;margin:.35rem 0;padding:.45rem;background:#090b0e;color:var(--muted);font-size:.52rem;line-height:1.35;text-align:left; }
+.card-exact b { color:var(--gold);font:700 .48rem var(--body);letter-spacing:.1em;text-transform:uppercase; }
+.lobby-core-loop { display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.45rem;margin:.8rem 0;padding:.75rem;border:1px solid rgba(197,164,106,.2);background:#0d0f13;color:var(--muted);font-size:.62rem;text-transform:uppercase;letter-spacing:.07em; }
+.lobby-core-loop strong { width:100%;color:var(--gold-bright);font:500 1.05rem var(--display);text-align:center;text-transform:none;letter-spacing:0; }
+.lobby-core-loop i { color:var(--gold);font-style:normal; }.lobby-core-loop p { width:100%;margin:0;text-align:center;text-transform:none;letter-spacing:0; }.lobby-tutorial { width:100%;margin-bottom:.5rem; }
+.game-help { width:min(780px,94vw);max-height:92dvh;overflow:auto;padding:1.5rem; }
+.game-help header { display:flex;justify-content:space-between;align-items:start; }.game-help header h2 { margin:.25rem 0;font:400 2rem var(--display); }.game-help header button { border:0;background:none;color:var(--ivory);font-size:1.5rem; }
+.game-help>p { color:var(--muted);line-height:1.55; }.game-help h3 { margin:1.1rem 0 .45rem;color:var(--gold);font:.7rem var(--body);letter-spacing:.14em;text-transform:uppercase; }
+.core-loop { display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem; }.core-loop span { display:grid;grid-template-columns:auto 1fr;gap:.35rem;padding:.7rem;background:#0d0f13;color:var(--ivory);font-size:.65rem;text-transform:uppercase; }.core-loop b { color:var(--gold); }.core-loop small { grid-column:2;color:var(--muted);font-size:.48rem; }
+.help-cards { display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-bottom:1rem; }.help-cards details { padding:.6rem;border:1px solid rgba(233,223,204,.1);background:#0d0f13; }.help-cards summary { cursor:pointer;list-style:none; }.help-cards summary b,.help-cards summary span { display:block; }.help-cards summary b { color:var(--ivory); }.help-cards summary span,.help-cards p { color:var(--muted);font-size:.58rem;line-height:1.45; }
+.tiebreak-copy { color:var(--muted);font-size:.58rem;line-height:1.5; }.tiebreak-stats { color:#817b72!important; }.score-table em small { font:normal .48rem var(--body);text-transform:uppercase; }.objective-item.complete summary { box-shadow:inset 2px 0 #79a58c; }
+.first-match-reminder { display:block;margin-top:.15rem;color:var(--gold);font-size:.5rem;letter-spacing:.04em; }
+
+@media (max-width: 760px) {
+  .tutorial-card-list,.help-cards { grid-template-columns:1fr; }.tutorial-card-list { max-height:105px; }.game-help { padding:1rem;padding-bottom:calc(1rem + env(safe-area-inset-bottom)); }.game-help header h2 { font-size:1.5rem; }.core-loop { grid-template-columns:1fr; }
+}

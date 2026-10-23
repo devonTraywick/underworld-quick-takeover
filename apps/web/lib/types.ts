@@ -56,7 +56,7 @@ export interface PublicState {
 
 export interface PrivateState {
   playerId: PlayerId;
-  objectives: Objective[];
+  objectives: Array<Objective & { current: number; target: number; completed: boolean }>;
   draftedCard: CardInstance | null;
   operation: OperationChoice | null;
   draftPreferences: string[];
