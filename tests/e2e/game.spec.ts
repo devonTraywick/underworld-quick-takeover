@@ -11,6 +11,10 @@ async function enterName(page: Page, nickname: string): Promise<void> {
   await page.getByRole("textbox", { name: "Your syndicate name" }).fill(nickname);
 }
 
+async function waitForPhaseReady(page: Page): Promise<void> {
+  await expect(page.locator(".phase-announcement")).toBeHidden({ timeout: 5_000 });
+}
+
 async function createRoom(context: BrowserContext, nickname: string): Promise<{ page: Page; roomCode: string }> {
   const page = await context.newPage();
   await page.goto("/");
@@ -58,7 +62,7 @@ test("the guided introduction is complete and skippable", async ({ page }) => {
 });
 
 test("two isolated browser contexts play a contested simultaneous round and reconnect", async ({ browser }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const hostContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const { page: host, roomCode } = await createRoom(hostContext, "Velvet Host");
@@ -67,6 +71,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(host.getByRole("heading", { name: "2 of 8 syndicates" })).toBeVisible();
   await host.getByRole("button", { name: "Begin takeover" }).click();
   await expect(host.getByRole("heading", { name: "Make your promises" })).toBeVisible();
+  await expect(host.locator(".phase-announcement")).toContainText(/Back-room negotiations/i);
   await expect(guest.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");
   await expect(host.locator(".game-page")).toHaveClass(/phase-negotiation/);
   await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");
@@ -76,6 +81,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await guest.getByRole("button", { name: "Missions" }).click();
   await expect(guest.locator(".objective-panel .objective-item")).toHaveCount(3);
   await guest.getByRole("button", { name: "Close objectives" }).click();
+  await waitForPhaseReady(host); await waitForPhaseReady(guest);
 
   expect(await guest.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await expect(guest.locator(".map-shell")).toBeVisible();
@@ -100,10 +106,11 @@ test("two isolated browser contexts play a contested simultaneous round and reco
     host.getByRole("button", { name: "Lock in & continue" }).click(),
     guest.getByRole("button", { name: "Lock in & continue" }).click(),
   ]);
-  await expect(host.getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
-  await expect(guest.getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
+  await expect(host.locator(".phase-card").getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
+  await expect(guest.locator(".phase-card").getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
   await expect(host.locator(".game-page")).toHaveClass(/phase-draft/);
   await expect(host.locator(".submission-note")).toContainText("players ready");
+  await waitForPhaseReady(host); await waitForPhaseReady(guest);
   await host.locator(".action-card").first().getByText("More details").click();
   await expect(host.locator(".action-card").first()).toContainText("Target");
   await expect(host.locator(".action-card").first()).toContainText("Expected benefit");
@@ -116,6 +123,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(host.getByRole("button", { name: "Deploy operation" })).toBeVisible();
   await expect(guest.getByRole("button", { name: "Deploy operation" })).toBeVisible();
   await expect(host.locator(".game-page")).toHaveClass(/phase-operations/);
+  await waitForPhaseReady(host); await waitForPhaseReady(guest);
   await host.locator(".district").first().click();
   await guest.locator(".district").first().click();
   await host.screenshot({ path: "test-results/phase-operations-desktop.png", fullPage: false });
@@ -141,11 +149,14 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   for (let round = 2; round <= 5; round += 1) {
     await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION", { timeout: 15_000 });
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await Promise.all([host.getByRole("button", { name: "Lock in & continue" }).click(), guest.getByRole("button", { name: "Lock in & continue" }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("DRAFT");
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await host.locator(".action-card").first().click(); await guest.locator(".action-card").first().click();
     await Promise.all([host.getByRole("button", { name: "Lock in" }).click(), guest.getByRole("button", { name: "Lock in" }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("OPERATIONS");
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await host.locator(".district").first().click(); await guest.locator(".district").first().click();
     await Promise.all([host.getByRole("button", { name: "Deploy operation" }).click(), guest.getByRole("button", { name: "Deploy operation" }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("REVEAL");

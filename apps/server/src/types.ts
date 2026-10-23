@@ -2,6 +2,7 @@ import type { GameState } from "@underworld/game";
 import type { Deal, PlayerId } from "@underworld/shared";
 
 export type RoomStatus = "lobby" | "active" | "finale" | "closed";
+export type PacingProfile = "quick" | "guided";
 
 export interface RoomPlayer {
   id: PlayerId;
@@ -44,6 +45,7 @@ export interface RoomRecord {
   status: RoomStatus;
   hostPlayerId: PlayerId;
   capacity: number;
+  pacingProfile: PacingProfile;
   players: RoomPlayer[];
   game: GameState | null;
   readyPlayerIds: PlayerId[];
@@ -51,6 +53,7 @@ export interface RoomRecord {
   deadlineAt: number | null;
   phaseStartedAt?: number | null;
   minimumAdvanceAt?: number | null;
+  actionAvailableAt?: number | null;
   endMatchVote?: {
     id: string;
     createdBy: PlayerId;

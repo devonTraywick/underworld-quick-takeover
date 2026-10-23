@@ -18,6 +18,7 @@ export interface PublicGame {
   players: PublicPlayer[];
   market: CardInstance[];
   submissionCount: number;
+  operationSubmissionCount: number;
   revealLog: Array<{ round: number; playerId: PlayerId; cardType: CardInstance["type"]; successful: boolean; automatic: boolean;
     districtId?: DistrictId; targetPlayerId?: PlayerId; stakeDelta?: number; influenceDelta: number; betrayed: boolean; ownerId?: PlayerId | null }>;
   roundHistory: Array<{ round: number; operations: PublicGame["revealLog"]; standings: Array<{ playerId: PlayerId; districts: number; influence: number; totalStake: number }>;
@@ -39,6 +40,8 @@ export interface PublicState {
     deadlineAt: number | null;
     phaseStartedAt: number | null;
     minimumAdvanceAt: number | null;
+    actionAvailableAt: number | null;
+    pacingProfile: "quick" | "guided";
     endMatchVote: null | { id: string; createdBy: PlayerId; electorate: PlayerId[]; approvals: PlayerId[]; rejections: PlayerId[]; expiresAt: number };
     serverNow: number;
     chats: Array<{ id: string; playerId: PlayerId; nickname: string; body: string; createdAt: number }>;

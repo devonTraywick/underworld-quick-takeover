@@ -8,6 +8,7 @@ export const createRoomSchema = z.object({ commandId: commandIdSchema, nickname:
 export const joinRoomSchema = z.object({ commandId: commandIdSchema, roomCode: roomCodeSchema, nickname: nicknameSchema }).strict();
 export const resumeRoomSchema = z.object({ roomCode: roomCodeSchema, playerId: z.uuid(), reconnectToken: z.string().min(32).max(256) }).strict();
 export const baseCommandSchema = z.object({ commandId: commandIdSchema, expectedStateVersion: z.number().int().nonnegative() }).strict();
+export const pacingCommandSchema = baseCommandSchema.extend({ pacingProfile: z.enum(["quick", "guided"]) }).strict();
 export const draftCommandSchema = baseCommandSchema.extend({ cardIds: z.array(z.string().min(1).max(80)).max(10) }).strict();
 export const operationCommandSchema = baseCommandSchema.extend({
   choice: z.object({

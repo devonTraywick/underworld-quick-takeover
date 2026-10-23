@@ -45,6 +45,19 @@ function useCountdown(state: PublicState | null): number | null {
   return Math.max(0, state.room.deadlineAt - (now + serverOffset.current));
 }
 
+function tone(frequency: number, duration = .16): void {
+  if (localStorage.getItem("underworld.sound.effects") === "muted") return;
+  try { const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext; const context = new AudioContextClass(); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.frequency.value = frequency; gain.gain.setValueAtTime(.035, context.currentTime); gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + duration); oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + duration); oscillator.addEventListener("ended", () => void context.close()); } catch { /* Visual confirmation remains available. */ }
+}
+
+function AttentionAudio({ state, privateState, countdown }: { state: PublicState; privateState: PrivateState | null; countdown: number | null }) {
+  const warned = useRef(""); const submitted = useRef(false); const game = state.game!;
+  const isSubmitted = game.phase === "draft" ? Boolean(privateState?.draftPreferences.length) : game.phase === "operations" ? Boolean(privateState?.operation) : false;
+  useEffect(() => { const key = `${game.matchId}:${game.round}:${game.phase}`; if (countdown !== null && countdown <= 5_000 && countdown > 0 && warned.current !== key) { warned.current = key; tone(392, .22); } }, [countdown, game.matchId, game.phase, game.round]);
+  useEffect(() => { if (isSubmitted && !submitted.current) tone(587, .18); submitted.current = isSubmitted; }, [isSubmitted]);
+  return null;
+}
+
 function useAttention(state: PublicState | null, privateState: PrivateState | null, playerId: string) {
   const key = `underworld.attention.${state?.room.code ?? "none"}.${playerId || "none"}`;
   const [seen, setSeen] = useState<{ publicIds: string[]; privateIds: string[]; objectiveRound: number }>(() => ({ publicIds: [], privateIds: [], objectiveRound: 0 }));
@@ -82,12 +95,15 @@ const PHASE_GUIDANCE: Record<PublicGame["phase"], { title: string; copy: string 
 function PhaseGuide({ state, privateState, playerId, countdown, incomingDeals }: { state: PublicState; privateState: PrivateState | null; playerId: string; countdown: number | null; incomingDeals: number }) {
   const game = state.game!; const guide = PHASE_GUIDANCE[game.phase];
   const submitted = game.phase === "draft" ? (privateState?.draftPreferences.length ?? 0) > 0 : game.phase === "operations" ? Boolean(privateState?.operation) : false;
+  const readyCount = game.phase === "draft" ? game.submissionCount : game.operationSubmissionCount;
+  const waiting = Math.max(0, game.players.length - readyCount);
   const action = incomingDeals > 0 && game.phase === "negotiation" ? `${incomingDeals} new deal${incomingDeals === 1 ? "" : "s"} — respond now`
-    : game.phase === "draft" ? (submitted ? "Card locked — waiting for rivals" : "Choose and lock one card")
-      : game.phase === "operations" ? (submitted ? "Operation deployed — waiting for reveal" : "Select a target and deploy")
+    : game.phase === "draft" ? (submitted ? `Card locked. ${readyCount} of ${game.players.length} bosses ready${waiting === 1 ? " — waiting for the final boss" : ""}` : "Choose one card, then select Lock in")
+      : game.phase === "operations" ? (submitted ? `Operation locked. ${readyCount} of ${game.players.length} bosses ready${waiting === 1 ? " — waiting for the final boss" : ""}` : "Pick a valid target, then select Deploy operation")
         : game.phase === "negotiation" ? `${state.room.readyCount}/${game.players.length} players ready`
           : game.phase === "round-results" ? `${state.room.readyCount}/${game.players.length} ready to continue` : "Server phase in progress";
-  return <section className={`phase-guide ${incomingDeals > 0 ? "has-alert" : ""}`} aria-live="polite"><div><span>{guide.title}</span><p>{guide.copy}</p>{game.round === 1 && <small className="first-match-reminder">First match: Make a deal → Choose a card → Pick a target.</small>}</div><strong>{action}</strong>{countdown !== null && <time aria-label={`${Math.ceil(countdown / 1000)} seconds remaining`}>{Math.ceil(countdown / 1000)}<small>sec</small></time>}<span className="sr-only">Current player: {playerId}</span></section>;
+  const seconds = countdown === null ? null : Math.ceil(countdown / 1000);
+  return <section className={`phase-guide ${incomingDeals > 0 ? "has-alert" : ""} ${seconds !== null && seconds <= 10 ? "timer-amber" : ""} ${seconds !== null && seconds <= 5 ? "timer-critical" : ""}`} aria-live="polite"><div><span>{guide.title}</span><p>{guide.copy}</p>{game.round === 1 && <small className="first-match-reminder">First match: Make a deal → Choose a card → Pick a target.</small>}</div><strong>{action}</strong>{seconds !== null && <time aria-label={`${seconds} seconds remaining`}>{seconds}<small>sec</small></time>}<span className="sr-only">Current player: {playerId}</span></section>;
 }
 
 export default function Home() {
@@ -132,7 +148,7 @@ export default function Home() {
   </main>;
 
   if (!game.publicState.game) return <Lobby state={game.publicState} playerId={game.session?.playerId ?? ""} busy={game.busy}
-    error={game.error} onStart={game.startMatch} onLeave={game.leaveRoom} />;
+    error={game.error} onStart={game.startMatch} onLeave={game.leaveRoom} onPacing={game.setPacing} />;
 
   const publicGame = game.publicState.game;
   const me = publicGame.players.find((player) => player.id === game.session?.playerId);
@@ -141,6 +157,7 @@ export default function Home() {
   return <main className={`game-page phase-${publicGame.phase}`}>
     <Onboarding />
     <PhaseAnnouncement state={game.publicState} />
+    <AttentionAudio state={game.publicState} privateState={game.privateState} countdown={countdown} />
     <header className="game-header">
       <div className="compact-brand"><div className="brand-seal small"><span>U·Q</span></div><div><span>Underworld</span><b>Quick Takeover</b></div></div>
       <div className="round-display"><span>Round</span><b>{publicGame.round}<em>/5</em></b></div>
@@ -155,7 +172,7 @@ export default function Home() {
         <section className="boss-dossier panel"><div className={`boss-portrait boss-${me?.seat ?? 0}`}><span>{me?.nickname}</span></div><div className="syndicate-meta"><span>Your syndicate</span><strong>{me?.nickname}</strong><p><b>{me?.influence ?? 0}</b> Influence · Seat {(me?.seat ?? 0) + 1}</p></div></section>
         {game.privateState && <Objectives privateState={game.privateState} game={publicGame} playerId={game.session?.playerId ?? ""} />}
       </aside>
-      <section className="map-column"><CityMap game={publicGame} selected={selectedDistrict} onSelect={needsMapTarget ? setOperationDistrict : undefined} /><div className="map-caption"><span>{needsMapTarget ? "Select a target" : "City control"}</span><p>{needsMapTarget ? "Tap an eligible district, then deploy your operation." : "Highest stake owns the district. A new tie leaves it contested."}</p></div></section>
+      <section className={`map-column ${needsMapTarget && !game.privateState?.operation ? "target-required" : ""}`}><CityMap game={publicGame} selected={selectedDistrict} onSelect={needsMapTarget ? setOperationDistrict : undefined} /><div className="map-caption"><span>{needsMapTarget ? "Select a target" : "City control"}</span><p>{needsMapTarget ? "Tap an eligible district, then deploy your operation." : "Highest stake owns the district. A new tie leaves it contested."}</p></div></section>
       <aside className={`social-column ${mobileOverlay === "wire" ? "mobile-open" : ""}`}>
         <button className="mobile-close" onClick={() => setMobileOverlay(null)} aria-label="Close wire">×</button>
         <ChatPanel state={game.publicState} privateState={game.privateState} playerId={playerId} onSend={game.sendChat} onSendPrivate={game.sendPrivateMessage} disabled={game.busy} unreadPublic={attention.unreadPublic} unreadPrivate={attention.unreadPrivate} onChannelViewed={attention.markViewed} />
@@ -179,7 +196,7 @@ export default function Home() {
   </main>;
 }
 
-function Lobby({ state, playerId, busy, error, onStart, onLeave }: { state: PublicState; playerId: string; busy: boolean; error: string | null; onStart: () => Promise<unknown>; onLeave: () => Promise<void> }) {
+function Lobby({ state, playerId, busy, error, onStart, onLeave, onPacing }: { state: PublicState; playerId: string; busy: boolean; error: string | null; onStart: () => Promise<unknown>; onLeave: () => Promise<void>; onPacing: (profile: "quick" | "guided") => Promise<unknown> }) {
   const isHost = state.room.hostPlayerId === playerId;
   const joinUrl = typeof window === "undefined" ? "" : window.location.href;
   return <main className="lobby-page">
@@ -190,6 +207,7 @@ function Lobby({ state, playerId, busy, error, onStart, onLeave }: { state: Publ
       <div className="player-list">{state.room.players.map((player, index) => <article key={player.id}><i style={{ background: FACTIONS[index] }} /><div><b>{player.nickname}</b><span>{player.id === state.room.hostPlayerId ? "Host · " : ""}{player.connected ? "At the table" : "Reconnecting"}</span></div><em>{String(index + 1).padStart(2, "0")}</em></article>)}</div>
       {Array.from({ length: Math.max(0, 2 - state.room.players.length) }).map((_, index) => <div className="waiting-seat" key={index}>Waiting for another syndicate…</div>)}
       <div className="lobby-core-loop"><strong>Take control of the city.</strong><span>Make a deal</span><i>→</i><span>Choose a card</span><i>→</i><span>Pick a target</span><p>Earn the most points across five rounds to win.</p></div>
+      <fieldset className="pacing-picker" disabled={!isHost || busy}><legend>Match pacing</legend><button className={state.room.pacingProfile === "quick" ? "active" : ""} onClick={() => void onPacing("quick")}><b>Quick Match</b><span>25s negotiate · 25s draft · 30s operations</span><small>About 7–10 minutes with early advancement</small></button><button className={state.room.pacingProfile === "guided" ? "active" : ""} onClick={() => void onPacing("guided")}><b>Guided Match</b><span>45s negotiate · 35s draft · 45s operations</span><small>About 11–16 minutes with more thinking time</small></button>{!isHost && <p>The host selected {state.room.pacingProfile === "guided" ? "Guided Match" : "Quick Match"}.</p>}</fieldset>
       <button className="outline-button lobby-tutorial" onClick={() => window.dispatchEvent(new Event("underworld:tutorial"))}>Replay tutorial</button>
       <div className="lobby-actions"><button className="text-button" onClick={onLeave}>Leave room</button>{isHost ? <button className="gold-button" disabled={busy || state.room.players.length < 2} onClick={onStart}>{state.room.players.length < 2 ? "Waiting for rivals" : "Begin takeover"}</button> : <div className="host-wait">Waiting for the host to begin…</div>}</div>
       {error && <div className="error-banner">{error}</div>}
@@ -225,7 +243,7 @@ function Draft({ game, privateState, busy, submit }: { game: PublicGame; private
   const [expanded, setExpanded] = useState<string | null>(null);
   const choose = (id: string) => setSelected(id);
   const lock = async () => { if (selected) await submit([selected, ...game.market.map((card) => card.id).filter((cardId) => cardId !== selected)]); };
-  return <section className="phase-card panel"><span className="eyebrow">Blind draft</span><h2>Choose your leverage</h2><p>Your first choice is secret. Rotating priority decides collisions.</p>
+  return <section className={`phase-card panel ${privateState?.draftPreferences.length ? "action-complete" : "action-required"}`}><span className="eyebrow">Blind draft</span><h2>Choose your leverage</h2><p>Your first choice is secret. Rotating priority decides collisions.</p>
     <div className="card-market">{game.market.map((card) => { const copy = CARD_COPY[card.type]; return <motion.button whileHover={{ y: -7, rotate: -1.2 }} whileTap={{ scale: .97 }} key={card.id} className={`action-card ${selected === card.id ? "selected" : ""} ${expanded === card.id ? "expanded" : ""}`} disabled={busy} onClick={() => choose(card.id)} onDoubleClick={() => setExpanded(expanded === card.id ? null : card.id)} aria-pressed={selected === card.id}>
       <span className="card-art" style={{ "--card-column": CARD_ART_INDEX[card.type] % 3, "--card-row": Math.floor(CARD_ART_INDEX[card.type] / 3) } as React.CSSProperties} /><span className="card-symbol">{copy.symbol}</span><b>{copy.name}</b><small>{copy.copy}</small>{expanded === card.id && <span className="card-exact"><b>Target</b> {CARD_GUIDE[card.type].target}<b>Expected benefit</b> {CARD_GUIDE[card.type].benefit}<b>Exact rule</b> {CARD_GUIDE[card.type].details}</span>}<span className="card-detail" onClick={(event) => { event.stopPropagation(); setExpanded(expanded === card.id ? null : card.id); }}>{expanded === card.id ? "Hide details" : "More details"}</span>{selected === card.id && <em>{privateState?.draftPreferences.length ? "Preference locked" : "Selected"}</em>}</motion.button>; })}</div>
     <div className="draft-confirm"><button className="gold-button" disabled={busy || !selected || (privateState?.draftPreferences.length ?? 0) > 0} onClick={lock}>{privateState?.draftPreferences.length ? "Card locked" : "Lock in"}</button><p className="submission-note">{game.submissionCount} of {game.players.length} players ready</p></div>
@@ -250,9 +268,9 @@ function Operation({ game, privateState, playerId, busy, submit, districtId, set
     {needsDistrict && <><div className="target-preview"><span>Target selected</span><b>{districtId ? DISTRICT_LABELS[districtId] : "Choose a district on the map"}</b></div><label className="control-label">Accessible target list<select value={districtId ?? ""} onChange={(event) => setDistrict(event.target.value as DistrictId)}>{game.activeDistricts.map((id) => <option key={id} value={id}>{DISTRICT_LABELS[id]}</option>)}</select></label></>}
     {needsRival && <label className="control-label">Target rival<select value={targetPlayerId} onChange={(event) => setTarget(event.target.value)}>{rivals.map((rival) => <option key={rival.id} value={rival.id}>{rival.nickname}</option>)}</select></label>}
     {resolvedType === "double-cross" && <label className="control-label">Agreement to betray<select value={dealId} onChange={(event) => setDeal(event.target.value)}><option value="">No deal — convert to Infiltrate</option>{deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.type.replaceAll("-", " ")}</option>)}</select></label>}
-    <button className="gold-button wide" disabled={busy || deploying || (needsDistrict && !districtId)} onClick={async () => { setDeploying(true); await new Promise((resolve) => setTimeout(resolve, 520)); await submit({ cardId: card.id, ...(needsDistrict ? { districtId } : {}), ...(needsRival ? { targetPlayerId } : {}), ...(resolvedType === "double-cross" && dealId ? { dealId } : {}) }); setDeploying(false); }}>{privateState?.operation ? "Update hidden move" : "Deploy operation"}</button>
+    <button className={`gold-button wide ${(!needsDistrict || districtId) && !privateState?.operation ? "deploy-ready" : ""}`} disabled={busy || deploying || (needsDistrict && !districtId)} onClick={async () => { setDeploying(true); await new Promise((resolve) => setTimeout(resolve, 520)); await submit({ cardId: card.id, ...(needsDistrict ? { districtId } : {}), ...(needsRival ? { targetPlayerId } : {}), ...(resolvedType === "double-cross" && dealId ? { dealId } : {}) }); setDeploying(false); }}>{privateState?.operation ? "Update hidden move" : "Deploy operation"}</button>
     <AnimatePresence>{deploying && <motion.div className="card-flight" initial={{ x: "0vw", y: "30vh", rotate: -12, scale: .65, opacity: 0 }} animate={{ x: "-5vw", y: "-24vh", rotate: 3, scale: 1, opacity: 1 }} exit={{ scale: 1.08, opacity: 0 }} transition={{ type: "spring", stiffness: 210, damping: 20 }}><span className="card-art-mini" style={{ "--card-column": CARD_ART_INDEX[resolvedType] % 3, "--card-row": Math.floor(CARD_ART_INDEX[resolvedType] / 3) } as React.CSSProperties} /></motion.div>}</AnimatePresence>
-    {privateState?.operation && <p className="locked-note">Move received. You may revise it before time expires.</p>}
+    {privateState?.operation && <p className="locked-note">✓ Your operation is locked in. The phase advances when every boss is ready or time expires.</p>}
   </section>;
 }
 

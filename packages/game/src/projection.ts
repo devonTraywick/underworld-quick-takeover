@@ -12,6 +12,7 @@ export interface PublicProjection {
   players: Array<{ id: PlayerId; seat: number; nickname: string; influence: number }>;
   market: GameState["draft"]["market"];
   submissionCount: number;
+  operationSubmissionCount: number;
   revealLog: GameState["revealLog"];
   roundHistory: GameState["roundHistory"];
   endedEarly: boolean;
@@ -31,6 +32,7 @@ export function projectPublic(state: GameState): PublicProjection {
     }),
     market: structuredClone(state.draft.market),
     submissionCount: Object.keys(state.draft.preferences).length,
+    operationSubmissionCount: state.seatOrder.filter((id) => state.players[id]!.operation !== undefined).length,
     revealLog: structuredClone(state.revealLog),
     roundHistory: structuredClone(state.roundHistory),
     endedEarly: state.endedEarly ?? false,

@@ -104,6 +104,7 @@ export function useGame() {
     createRoom: (nickname: string) => run("room:create", { nickname }, false),
     joinRoom: (roomCode: string, nickname: string) => run("room:join", { roomCode, nickname }, false),
     startMatch: () => run("room:start", {}),
+    setPacing: (pacingProfile: "quick" | "guided") => run("room:setPacing", { pacingProfile }),
     setReady: (ready: boolean) => run("negotiation:setReady", { ready }),
     submitDraft: (cardIds: string[]) => run("draft:submitPreferences", { cardIds }),
     submitOperation: (choice: object) => run("operation:submit", { choice }),

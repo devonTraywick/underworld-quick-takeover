@@ -32,6 +32,7 @@ import {
   operationCommandSchema,
   privateMessageCommandSchema,
   readyCommandSchema,
+  pacingCommandSchema,
   resumeRoomSchema,
 } from "./schemas.js";
 import type { Clock, CommandError, RoomRecord, RoomRepository, Session, StoredAck } from "./types.js";
@@ -46,6 +47,7 @@ export interface PhaseDurations {
   cinematicReveal: number;
   results: number;
   intermission: number;
+  introduction: number;
   /** @deprecated compatibility alias for cinematicReveal */
   reveal?: number;
 }
@@ -63,8 +65,10 @@ export interface MultiplayerServerOptions {
 
 type AckCallback = (ack: unknown) => void;
 
-const DEFAULT_DURATIONS: PhaseDurations = { negotiation: 25_000, draft: 20_000, operations: 30_000,
-  cinematicReveal: 14_000, results: 12_000, intermission: 2_000 };
+const PACING: Record<"quick" | "guided", PhaseDurations> = {
+  quick: { negotiation: 25_000, draft: 25_000, operations: 30_000, introduction: 2_000, cinematicReveal: 14_000, results: 10_000, intermission: 2_000 },
+  guided: { negotiation: 45_000, draft: 35_000, operations: 45_000, introduction: 3_000, cinematicReveal: 20_000, results: 17_000, intermission: 3_000 },
+};
 
 export class MultiplayerServer {
   readonly app: FastifyInstance;
@@ -74,6 +78,7 @@ export class MultiplayerServer {
   private readonly seedSecret: string;
   private readonly clock: Clock;
   private readonly durations: PhaseDurations;
+  private readonly customDurations: boolean;
   private readonly timerPollMs: number;
   private readonly instanceId = randomUUID();
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -86,8 +91,10 @@ export class MultiplayerServer {
     this.pepper = options.reconnectTokenPepper;
     this.seedSecret = options.gameSeedSecret;
     this.clock = options.clock ?? systemClock;
-    this.durations = { ...DEFAULT_DURATIONS, ...options.phaseDurations,
-      cinematicReveal: options.phaseDurations?.cinematicReveal ?? options.phaseDurations?.reveal ?? DEFAULT_DURATIONS.cinematicReveal };
+    this.customDurations = options.phaseDurations !== undefined;
+    this.durations = { ...PACING.quick, ...options.phaseDurations,
+      introduction: options.phaseDurations ? options.phaseDurations.introduction ?? 0 : PACING.quick.introduction,
+      cinematicReveal: options.phaseDurations?.cinematicReveal ?? options.phaseDurations?.reveal ?? PACING.quick.cinematicReveal };
     this.timerPollMs = options.timerPollMs ?? 250;
     this.app = Fastify({ logger: options.logger ?? false });
     this.io = new SocketServer(this.app.server, {
@@ -143,7 +150,12 @@ export class MultiplayerServer {
         room.game = createGame(room.id, room.players.map((player) => ({ id: player.id, nickname: player.nickname })), seed);
         room.status = "active";
         room.readyPlayerIds = [];
-        this.setPhaseClock(room, this.durations.negotiation);
+        this.setDecisionClock(room, this.profile(room).negotiation);
+      }));
+      socket.on("room:setPacing", (payload, ack) => void this.withCommand(socket, "room:setPacing", pacingCommandSchema, payload, ack, (room, session, data) => {
+        if (room.status !== "lobby") throw commandFailure("INVALID_PHASE", "Pacing can only change in the lobby");
+        if (room.hostPlayerId !== session.playerId) throw commandFailure("FORBIDDEN", "Only the host can choose match pacing");
+        room.pacingProfile = data.pacingProfile;
       }));
       socket.on("room:leave", (payload, ack) => void this.withCommand(socket, "room:leave", baseCommandSchema, payload, ack, (room, session) => {
         const player = room.players.find((candidate) => candidate.id === session.playerId)!;
@@ -162,20 +174,23 @@ export class MultiplayerServer {
       }));
       socket.on("negotiation:setReady", (payload, ack) => void this.withCommand(socket, "negotiation:setReady", readyCommandSchema, payload, ack, (room, session, data) => {
         this.requirePhase(room, "negotiation");
+        this.requireActionAvailable(room);
         const ready = new Set(room.readyPlayerIds);
         if (data.ready) ready.add(session.playerId); else ready.delete(session.playerId);
         room.readyPlayerIds = [...ready];
-        if (ready.size === room.players.length) this.advancePhase(room);
+        if (ready.size === room.players.length) this.scheduleCompletion(room);
       }));
       socket.on("draft:submitPreferences", (payload, ack) => void this.withCommand(socket, "draft:submitPreferences", draftCommandSchema, payload, ack, (room, session, data) => {
         this.requirePhase(room, "draft");
+        this.requireActionAvailable(room);
         room.game = submitDraftPreferences(room.game!, session.playerId, data.cardIds);
-        if (Object.keys(room.game.draft.preferences).length === room.players.length) this.advancePhase(room);
+        if (Object.keys(room.game.draft.preferences).length === room.players.length) this.scheduleCompletion(room);
       }));
       socket.on("operation:submit", (payload, ack) => void this.withCommand(socket, "operation:submit", operationCommandSchema, payload, ack, (room, session, data) => {
         this.requirePhase(room, "operations");
+        this.requireActionAvailable(room);
         room.game = submitOperation(room.game!, session.playerId, data.choice as OperationChoice);
-        if (room.players.every((player) => room.game!.players[player.id]!.operation !== undefined)) this.advancePhase(room);
+        if (room.players.every((player) => room.game!.players[player.id]!.operation !== undefined)) this.scheduleCompletion(room);
       }));
       socket.on("round:continue", (payload, ack) => void this.withCommand(socket, "round:continue", baseCommandSchema, payload, ack, (room, session) => {
         this.requirePhase(room, "round-results");
@@ -249,7 +264,7 @@ export class MultiplayerServer {
           const seed = createHmac("sha256", this.seedSecret).update(`${room.id}:rematch:${room.version}:${this.clock.now()}`).digest("hex");
           room.game = createGame(room.id, room.players.map((player) => ({ id: player.id, nickname: player.nickname })), seed);
           room.status = "active"; room.readyPlayerIds = []; room.rematchPlayerIds = [];
-          this.setPhaseClock(room, this.durations.negotiation);
+          this.setDecisionClock(room, this.profile(room).negotiation);
         }
       }));
       socket.on("chat:send", (payload, ack) => void this.withCommand(socket, "chat:send", chatCommandSchema, payload, ack, (room, session, data) => {
@@ -294,9 +309,9 @@ export class MultiplayerServer {
       while (await this.repository.getByCode(code)) code = this.createCode();
       const now = this.clock.now();
       const room: RoomRecord = {
-        id: randomUUID(), code, status: "lobby", hostPlayerId: playerId, capacity: 8,
+        id: randomUUID(), code, status: "lobby", hostPlayerId: playerId, capacity: 8, pacingProfile: "quick",
         players: [{ id: playerId, nickname: data.nickname, seat: 0, reconnectTokenHash: this.hashToken(token), connected: true, lastSeenAt: now }],
-        game: null, readyPlayerIds: [], rematchPlayerIds: [], deadlineAt: null, phaseStartedAt: null, minimumAdvanceAt: null,
+        game: null, readyPlayerIds: [], rematchPlayerIds: [], deadlineAt: null, phaseStartedAt: null, minimumAdvanceAt: null, actionAvailableAt: null,
         endMatchVote: null, version: 1, processedCommands: {}, chats: [],
         privateMessages: [], createdAt: now, expiresAt: now + 24 * 60 * 60 * 1000,
       };
@@ -390,34 +405,53 @@ export class MultiplayerServer {
     if (!room.game || room.game.phase !== phase) throw commandFailure("INVALID_PHASE", `Command requires ${phase}`);
   }
 
+  private requireActionAvailable(room: RoomRecord): void {
+    if ((room.actionAvailableAt ?? 0) > this.clock.now()) throw commandFailure("PHASE_PREPARING", "The phase introduction is still playing", true);
+  }
+
+  private profile(room: RoomRecord): PhaseDurations {
+    return this.durations.introduction === 0 ? this.durations : PACING[room.pacingProfile ?? "quick"];
+  }
+
+  private scheduleCompletion(room: RoomRecord): void {
+    if (this.profile(room).introduction === 0) { this.advancePhase(room); return; }
+    const completionAt = this.clock.now() + 1_200;
+    room.deadlineAt = Math.min(room.deadlineAt ?? completionAt, completionAt);
+  }
+
   private advancePhase(room: RoomRecord): void {
     const game = room.game!;
     if (game.phase === "negotiation") {
-      room.game = beginDraft(game); room.readyPlayerIds = []; this.setPhaseClock(room, this.durations.draft);
+      room.game = beginDraft(game); room.readyPlayerIds = []; this.setDecisionClock(room, this.profile(room).draft);
     } else if (game.phase === "draft") {
-      room.game = resolveDraft(game); this.setPhaseClock(room, this.durations.operations);
+      room.game = resolveDraft(game); this.setDecisionClock(room, this.profile(room).operations);
     } else if (game.phase === "operations") {
       room.game = resolveOperations(game);
       const events = room.game.revealLog.filter((entry) => entry.round === room.game!.round).length;
-      this.setPhaseClock(room, Math.min(18_000, Math.max(12_000, this.durations.cinematicReveal + Math.max(0, events - 2) * 1_000)));
+      const timing = this.profile(room); const revealDuration = this.customDurations ? timing.cinematicReveal : Math.min(room.pacingProfile === "guided" ? 25_000 : 18_000, Math.max(room.pacingProfile === "guided" ? 15_000 : 12_000, timing.cinematicReveal + Math.max(0, events - 2) * 1_000)); this.setPhaseClock(room, revealDuration, 0, timing.introduction);
     } else if (game.phase === "cinematic-reveal") {
       room.game = advanceToRoundResults(game); room.readyPlayerIds = [];
-      this.setPhaseClock(room, this.durations.results, 8_000);
+      const timing = this.profile(room); this.setPhaseClock(room, timing.results, Math.min(timing.results, room.pacingProfile === "guided" ? 12_000 : 8_000), timing.introduction);
     } else if (game.phase === "round-results") {
       room.game = advanceToIntermission(game); room.readyPlayerIds = [];
-      this.setPhaseClock(room, this.durations.intermission);
+      this.setPhaseClock(room, this.profile(room).intermission);
     } else if (game.phase === "intermission") {
       room.game = advanceAfterReveal(game);
       if (room.game.phase === "finale") { room.status = "finale"; room.deadlineAt = null; }
-      else this.setPhaseClock(room, this.durations.negotiation);
+      else this.setDecisionClock(room, this.profile(room).negotiation);
     }
   }
 
-  private setPhaseClock(room: RoomRecord, duration: number, minimum = 0): void {
+  private setDecisionClock(room: RoomRecord, duration: number): void {
+    this.setPhaseClock(room, duration, 0, this.profile(room).introduction);
+  }
+
+  private setPhaseClock(room: RoomRecord, duration: number, minimum = 0, introduction = 0): void {
     const now = this.clock.now();
     room.phaseStartedAt = now;
-    room.minimumAdvanceAt = minimum > 0 ? now + minimum : null;
-    room.deadlineAt = now + duration;
+    room.actionAvailableAt = introduction > 0 ? now + introduction : now;
+    room.minimumAdvanceAt = minimum > 0 ? now + introduction + minimum : null;
+    room.deadlineAt = now + introduction + duration;
   }
 
   private transferHost(room: RoomRecord): void {
@@ -481,6 +515,7 @@ export class MultiplayerServer {
         players: room.players.map(({ reconnectTokenHash: _, ...player }) => player),
         version: room.version, readyCount: room.readyPlayerIds.length, deadlineAt: room.deadlineAt,
         phaseStartedAt: room.phaseStartedAt ?? null, minimumAdvanceAt: room.minimumAdvanceAt ?? null,
+        actionAvailableAt: room.actionAvailableAt ?? null, pacingProfile: room.pacingProfile ?? "quick",
         endMatchVote: room.endMatchVote ? { id: room.endMatchVote.id, createdBy: room.endMatchVote.createdBy,
           electorate: room.endMatchVote.electorate, approvals: room.endMatchVote.approvals,
           rejections: room.endMatchVote.rejections, expiresAt: room.endMatchVote.expiresAt } : null,

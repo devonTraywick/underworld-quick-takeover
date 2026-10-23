@@ -39,6 +39,12 @@ async function harness() {
   return { repository, clock, server, url };
 }
 
+async function pacingHarness() {
+  const repository = new MemoryRoomRepository(); const clock = new FakeClock();
+  const server = new MultiplayerServer({ repository, clock, reconnectTokenPepper: "p".repeat(32), gameSeedSecret: "s".repeat(32), timerPollMs: 100_000 });
+  const url = await server.listen(); servers.push(server); return { repository, clock, server, url };
+}
+
 function connect(url: string): Promise<Socket> {
   return new Promise((resolve, reject) => {
     const socket = createClient(url, { transports: ["websocket"], forceNew: true, reconnection: false });
@@ -140,6 +146,25 @@ async function submitOperationsAll(clients: ClientSession[]): Promise<void> {
 }
 
 describe("authoritative multiplayer server", () => {
+  it("uses the host pacing profile and protects decision time behind an authoritative introduction", async () => {
+    const { url, clock, server } = await pacingHarness();
+    const host = await createRoom(url, "Guided Host"); const guest = await joinRoom(url, host.roomCode, "Patient Guest");
+    await eventually(() => host.publicState.room.players.length === 2);
+    const pacing = await emitAck<any>(host.socket, "room:setPacing", { commandId: commandId(), expectedStateVersion: version(host), pacingProfile: "guided" });
+    expect(pacing.ok).toBe(true); await eventually(() => guest.publicState.room.pacingProfile === "guided");
+    const started = await emitAck<any>(host.socket, "room:start", { commandId: commandId(), expectedStateVersion: version(host) });
+    expect(started.ok).toBe(true); await eventually(() => guest.publicState.game?.phase === "negotiation");
+    expect(guest.publicState.room.actionAvailableAt - guest.publicState.room.phaseStartedAt).toBe(3_000);
+    expect(guest.publicState.room.deadlineAt - guest.publicState.room.actionAvailableAt).toBe(45_000);
+    const early = await emitAck<any>(guest.socket, "negotiation:setReady", { commandId: commandId(), expectedStateVersion: version(guest), ready: true });
+    expect(early.error.code).toBe("PHASE_PREPARING");
+    clock.advance(3_001);
+    for (const client of [host, guest]) { const ack = await emitAck<any>(client.socket, "negotiation:setReady", { commandId: commandId(), expectedStateVersion: version(client), ready: true }); expect(ack.ok).toBe(true); await eventually(() => version(host) >= ack.stateVersion && version(guest) >= ack.stateVersion); }
+    expect(host.publicState.game.phase).toBe("negotiation");
+    clock.advance(1_201); await server.tick(); await eventually(() => host.publicState.game.phase === "draft");
+    expect(host.publicState.room.deadlineAt - host.publicState.room.actionAvailableAt).toBe(35_000);
+  });
+
   it("plays a complete deterministic five-round match with two independent clients", async () => {
     const { url, clock, server, repository } = await harness();
     const { host, guest } = await startTwoPlayerMatch(url);
