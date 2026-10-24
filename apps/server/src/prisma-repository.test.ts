@@ -32,6 +32,8 @@ describeDatabase("PrismaRoomRepository", () => {
     const recovered = await restarted.getByCode(room.code);
     expect(recovered?.version).toBe(2);
     expect(recovered?.players[0]?.connected).toBe(false);
+    expect(await restarted.purgeExpired(now + 60_001)).toBe(1);
+    expect(await restarted.getByCode(room.code)).toBeNull();
     await restarted.close();
   });
 });

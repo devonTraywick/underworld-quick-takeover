@@ -44,5 +44,14 @@ export class MemoryRoomRepository implements RoomRepository {
     if (this.leases.get(code)?.owner === owner) this.leases.delete(code);
   }
 
+  async purgeExpired(now: number): Promise<number> {
+    let removed = 0;
+    for (const [code, room] of this.rooms) {
+      if (room.expiresAt > now) continue;
+      this.rooms.delete(code); this.leases.delete(code); removed += 1;
+    }
+    return removed;
+  }
+
   async close(): Promise<void> {}
 }

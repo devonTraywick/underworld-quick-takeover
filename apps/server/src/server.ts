@@ -86,6 +86,7 @@ export class MultiplayerServer {
   private readonly queues = new Map<string, Promise<void>>();
   private readonly chatWindows = new Map<string, number[]>();
   private readonly roomChatWindows = new Map<string, number[]>();
+  private lastCleanupAt = 0;
 
   constructor(options: MultiplayerServerOptions) {
     this.repository = options.repository;
@@ -502,6 +503,11 @@ export class MultiplayerServer {
   }
 
   private async processDueRooms(): Promise<void> {
+    if (this.clock.now() - this.lastCleanupAt >= 5 * 60 * 1000) {
+      const removed = await this.repository.purgeExpired(this.clock.now());
+      this.lastCleanupAt = this.clock.now();
+      if (removed > 0) this.app.log.info({ removed }, "expired rooms purged");
+    }
     const codes = await this.repository.due(this.clock.now());
     await Promise.all(codes.map((code) => this.enqueue(code, async () => {
       const claimed = await this.repository.claimDue(code, this.instanceId, this.clock.now(), 10_000);

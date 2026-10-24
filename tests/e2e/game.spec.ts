@@ -86,6 +86,30 @@ test("sound requires explicit activation and exposes honest controls", async ({ 
   await expect.poll(() => page.evaluate(() => ({ enabled: localStorage.getItem("underworld.audio.enabled"), muted: localStorage.getItem("underworld.audio.muted") }))).toEqual({ enabled: "true", muted: "true" });
 });
 
+test("release layouts avoid console failures, shifts, overflow, and undersized primary controls", async ({ browser }) => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }]) {
+    const context = await browser.newContext({ viewport });
+    await context.addInitScript(() => {
+      (window as typeof window & { __releaseCLS?: number }).__releaseCLS = 0;
+      new PerformanceObserver((list) => { for (const entry of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) if (!entry.hadRecentInput) (window as typeof window & { __releaseCLS: number }).__releaseCLS += entry.value; }).observe({ type: "layout-shift", buffered: true });
+    });
+    const page = await context.newPage(); const errors: string[] = [];
+    page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/"); await dismissOnboarding(page);
+    await page.getByRole("textbox", { name: "Your syndicate name" }).focus();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => (window as typeof window & { __releaseCLS?: number }).__releaseCLS ?? 0)).toBeLessThan(.1);
+    const enable = await page.getByRole("button", { name: "Enable sound" }).boundingBox();
+    expect(enable?.height).toBeGreaterThanOrEqual(44);
+    if (viewport.width <= 480) expect(await page.getByRole("textbox", { name: "Your syndicate name" }).evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(16);
+    const bytes = await page.evaluate(() => performance.getEntriesByType("resource").reduce((sum, entry) => sum + ((entry as PerformanceResourceTiming).encodedBodySize || 0), 0));
+    expect(bytes).toBeLessThan(4_000_000);
+    expect(errors).toEqual([]);
+    await context.close();
+  }
+});
+
 test("invite copy confirms only after success, resets, and offers a failure fallback", async ({ context }) => {
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => undefined } });
@@ -329,6 +353,9 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(guest.locator(".finale-card")).toBeVisible();
 
   expect(await host.locator("body").evaluate((body) => body.textContent?.includes("Crimson Guest") ?? false)).toBe(true);
+  await Promise.all([host.getByRole("button", { name: "Demand a rematch" }).click(), guest.getByRole("button", { name: "Demand a rematch" }).click()]);
+  await expect(host.getByRole("dialog", { name: "Your orders have arrived." })).toBeVisible({ timeout: 10_000 });
+  await expect(guest.getByRole("dialog", { name: "Your orders have arrived." })).toBeVisible();
   await hostContext.close();
   await guestContext.close();
 });

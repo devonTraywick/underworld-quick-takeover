@@ -108,6 +108,11 @@ export class PrismaRoomRepository implements RoomRepository {
     await this.prisma.room.updateMany({ where: { code, leaseOwner: owner }, data: { leaseOwner: null, leaseUntil: null } });
   }
 
+  async purgeExpired(now: number): Promise<number> {
+    const result = await this.prisma.room.deleteMany({ where: { expiresAt: { lte: new Date(now) } } });
+    return result.count;
+  }
+
   async close(): Promise<void> {
     await this.prisma.$disconnect();
   }

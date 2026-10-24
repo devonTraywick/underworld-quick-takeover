@@ -84,6 +84,7 @@ export interface RoomRepository {
   due(now: number): Promise<string[]>;
   claimDue(code: string, owner: string, now: number, leaseMs: number): Promise<boolean>;
   releaseClaim(code: string, owner: string): Promise<void>;
+  purgeExpired(now: number): Promise<number>;
   close(): Promise<void>;
 }
 

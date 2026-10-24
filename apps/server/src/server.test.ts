@@ -406,6 +406,55 @@ describe("authoritative multiplayer server", () => {
     await eventually(() => guest.publicState.room.status === "finale" && guest.publicState.game.endedEarly === true);
   });
 
+  it("coordinates eight concurrent clients, preserves privacy, and reconnects during reveal", async () => {
+    const { url } = await harness();
+    const host = await createRoom(url, "Stress Boss 1");
+    const clients = [host];
+    for (let index = 2; index <= 8; index += 1) clients.push(await joinRoom(url, host.roomCode, `Stress Boss ${index}`));
+    await eventually(() => clients.every((client) => client.publicState.room.players.length === 8));
+    const started = await emitAck<any>(host.socket, "room:start", { commandId: commandId(), expectedStateVersion: version(host) });
+    expect(started.ok).toBe(true); await acknowledgeBriefing(clients);
+    expect(JSON.stringify(host.publicState)).not.toContain("objectives");
+    expect(new Set(clients.map((client) => JSON.stringify(client.privateState.objectives))).size).toBeGreaterThan(1);
+
+    const concurrently = async (event: string, payload: (client: ClientSession) => object) => {
+      let pending = [...clients];
+      while (pending.length) {
+        const attempted = pending.map((client) => ({ client, stateVersion: version(client) }));
+        const results = await Promise.all(attempted.map(({ client, stateVersion }) => emitAck<any>(client.socket, event, { commandId: commandId(), expectedStateVersion: stateVersion, ...payload(client) })));
+        pending = attempted.filter((_, index) => !results[index]?.ok).map(({ client }) => client);
+        if (pending.length) await eventually(() => pending.every((client) => version(client) > attempted.find((entry) => entry.client === client)!.stateVersion));
+      }
+    };
+    await concurrently("negotiation:setReady", () => ({ ready: true }));
+    await eventually(() => clients.every((client) => client.publicState.game.phase === "draft"));
+    await concurrently("draft:submitPreferences", (client) => ({ cardIds: client.publicState.game.market.map((card: any) => card.id) }));
+    await eventually(() => clients.every((client) => client.publicState.game.phase === "operations" && client.privateState?.draftedCard));
+    await concurrently("operation:submit", (client) => ({ choice: { cardId: client.privateState.draftedCard.id } }));
+    await eventually(() => clients.every((client) => client.publicState.game.phase === "cinematic-reveal"));
+    expect(clients[0]!.publicState.game.players).toHaveLength(8);
+    expect(clients[0]!.publicState.game.activeDistricts).toHaveLength(7);
+
+    const slow = clients[7]!; const oldToken = slow.reconnectToken; slow.socket.disconnect();
+    const replacement = await connect(url); const established = new Promise<any>((resolve) => replacement.once("session:established", resolve));
+    const publicState = new Promise<any>((resolve) => replacement.once("state:public", resolve));
+    const privateState = new Promise<any>((resolve) => replacement.once("state:private", resolve));
+    const resumed = await emitAck<any>(replacement, "room:resume", { roomCode: host.roomCode, playerId: slow.playerId, reconnectToken: oldToken });
+    expect(resumed.ok).toBe(true); await established;
+    expect((await publicState).game.phase).toBe("cinematic-reveal");
+    expect((await privateState).playerId).toBe(slow.playerId);
+  });
+
+  it("purges expired rooms and their reconnect state", async () => {
+    const { url, clock, server, repository } = await harness();
+    const host = await createRoom(url, "Short Lived Boss");
+    expect(await repository.getByCode(host.roomCode)).not.toBeNull();
+    clock.advance(24 * 60 * 60 * 1000 + 1); await server.tick();
+    expect(await repository.getByCode(host.roomCode)).toBeNull();
+    const resume = await emitAck<any>(await connect(url), "room:resume", { roomCode: host.roomCode, playerId: host.playerId, reconnectToken: host.reconnectToken });
+    expect(resume.error.code).toBe("ROOM_NOT_FOUND");
+  });
+
   it("rate limits public chat server-side", async () => {
     const { url } = await harness();
     const host = await createRoom(url, "Chat Boss");
