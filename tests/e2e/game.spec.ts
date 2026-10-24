@@ -71,6 +71,21 @@ test("the guided introduction is complete and skippable", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
+test("sound requires explicit activation and exposes honest controls", async ({ page }) => {
+  await page.goto("/");
+  await dismissOnboarding(page);
+  const controls = page.getByRole("region", { name: "Sound controls" });
+  await expect(controls.getByRole("button", { name: "Enable sound" })).toBeVisible();
+  await controls.getByRole("button", { name: "Enable sound" }).click();
+  await expect(controls.getByText("Sound enabled. Did you hear the confirmation?")).toBeVisible();
+  await expect(controls.getByRole("button", { name: "Test Sound" })).toBeVisible();
+  await controls.getByRole("button", { name: "Test Sound" }).click();
+  await expect(controls.getByText("Test sound scheduled. Did you hear it?")).toBeVisible();
+  await controls.getByRole("button", { name: "Sound · On" }).click();
+  await expect(controls.getByText("Sound muted.")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({ enabled: localStorage.getItem("underworld.audio.enabled"), muted: localStorage.getItem("underworld.audio.muted") }))).toEqual({ enabled: "true", muted: "true" });
+});
+
 test("invite copy confirms only after success, resets, and offers a failure fallback", async ({ context }) => {
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => undefined } });

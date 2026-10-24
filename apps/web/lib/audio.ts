@@ -1,30 +1,33 @@
-export type SoundCue = "join" | "copy" | "deal-incoming" | "deal-accepted" | "deal-rejected" | "briefing" | "phase" | "card-select" | "card-lock" | "deploy" | "reveal" | "success" | "failure" | "capture" | "betrayal" | "results" | "victory" | "countdown";
-export interface AudioPreferences { muted: boolean; effectsVolume: number }
-const MUTE_KEY = "underworld.audio.muted"; const VOLUME_KEY = "underworld.audio.effects-volume";
-let context: AudioContext | null = null; let lastCueAt = 0;
-
-export function getAudioPreferences(storage: Pick<Storage, "getItem"> = localStorage): AudioPreferences {
-  const legacyMuted = storage.getItem("underworld.sound.effects") === "muted";
-  const storedVolume = storage.getItem(VOLUME_KEY); const parsed = storedVolume === null ? Number.NaN : Number(storedVolume);
-  return { muted: storage.getItem(MUTE_KEY) === "true" || legacyMuted, effectsVolume: Number.isFinite(parsed) && parsed >= 0 ? Math.min(1, parsed) : .55 };
-}
-export function setAudioPreferences(next: AudioPreferences, storage: Pick<Storage, "setItem"> = localStorage): void {
-  storage.setItem(MUTE_KEY, String(next.muted)); storage.setItem(VOLUME_KEY, String(Math.max(0, Math.min(1, next.effectsVolume))));
-}
-function audioContext(): AudioContext | null {
-  if (typeof window === "undefined") return null;
-  try { const Klass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext; context ??= new Klass(); return context; } catch { return null; }
-}
-export async function unlockAudio(): Promise<boolean> { const value = audioContext(); if (!value) return false; try { if (value.state === "suspended") await value.resume(); return value.state === "running"; } catch { return false; } }
-export function playCue(cue: SoundCue): void {
-  const prefs = getAudioPreferences(); const now = performance.now();
-  if (prefs.muted || prefs.effectsVolume <= 0 || now - lastCueAt < 70) return;
-  const ctx = audioContext(); if (!ctx || ctx.state !== "running") return; lastCueAt = now;
-  const settings: Record<SoundCue, [number, number, OscillatorType]> = {
-    join: [174, .28, "sine"], copy: [520, .16, "triangle"], "deal-incoming": [246, .28, "triangle"], "deal-accepted": [330, .32, "sine"], "deal-rejected": [110, .25, "sawtooth"], briefing: [98, .65, "sine"], phase: [130, .42, "triangle"], "card-select": [440, .09, "triangle"], "card-lock": [196, .28, "square"], deploy: [82, .38, "sine"], reveal: [220, .25, "triangle"], success: [392, .3, "sine"], failure: [92, .3, "sawtooth"], capture: [73, .55, "sine"], betrayal: [70, .5, "sawtooth"], results: [147, .45, "triangle"], victory: [220, .8, "sine"], countdown: [392, .18, "sine"],
-  };
-  const [frequency, duration, type] = settings[cue]; const oscillator = ctx.createOscillator(); const gain = ctx.createGain();
-  oscillator.type = type; oscillator.frequency.setValueAtTime(frequency, ctx.currentTime); oscillator.frequency.exponentialRampToValueAtTime(cue === "victory" ? frequency * 2 : frequency * 1.18, ctx.currentTime + duration);
-  const level = Math.max(.0001, prefs.effectsVolume * .07); gain.gain.setValueAtTime(.0001, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(level, ctx.currentTime + .025); gain.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + duration);
-  oscillator.connect(gain); gain.connect(ctx.destination); oscillator.start(); oscillator.stop(ctx.currentTime + duration + .02);
-}
+export type SoundCue = "join" | "copy" | "message-private" | "message-public" | "deal-incoming" | "deal-accepted" | "deal-rejected" | "briefing" | "phase" | "card-select" | "card-lock" | "deploy" | "reveal" | "success" | "failure" | "capture" | "betrayal" | "results" | "victory" | "countdown" | "test";
+export interface AudioPreferences { muted: boolean; effectsVolume: number; enabled: boolean }
+export interface AudioStatus { state: AudioContextState | "unavailable"; enabled: boolean; muted: boolean; effectsVolume: number; lastCue?: SoundCue | undefined; lastResult?: "scheduled" | "muted" | "locked" | "duplicate" | "throttled" | "error" | undefined; error?: string | undefined }
+export interface CueOptions { eventId?: string; force?: boolean }
+const MUTE_KEY="underworld.audio.muted", VOLUME_KEY="underworld.audio.effects-volume", ENABLED_KEY="underworld.audio.enabled";
+const played=new Map<string,number>(), listeners=new Set<()=>void>(); let context:AudioContext|null=null, lastScheduledAt=0;
+let status:AudioStatus={state:"unavailable",enabled:false,muted:false,effectsVolume:.55};
+const store=():Storage|null=>typeof window==="undefined"?null:window.localStorage;
+export function getAudioPreferences(value:Pick<Storage,"getItem">|null=store()):AudioPreferences { if(!value)return{muted:false,effectsVolume:.55,enabled:false}; const storedVolume=value.getItem(VOLUME_KEY),parsed=storedVolume===null?Number.NaN:Number(storedVolume); return{muted:value.getItem(MUTE_KEY)==="true"||value.getItem("underworld.sound.effects")==="muted",effectsVolume:Number.isFinite(parsed)&&parsed>=0?Math.min(1,parsed):.55,enabled:value.getItem(ENABLED_KEY)==="true"}; }
+export function setAudioPreferences(next:AudioPreferences,value:Pick<Storage,"setItem">|null=store()):void { const n={...next,effectsVolume:Math.max(0,Math.min(1,next.effectsVolume))}; value?.setItem(MUTE_KEY,String(n.muted));value?.setItem(VOLUME_KEY,String(n.effectsVolume));value?.setItem(ENABLED_KEY,String(n.enabled));update(n); }
+function update(next:Partial<AudioStatus>){status={...status,...next};listeners.forEach(fn=>fn());}
+export function getAudioStatus():AudioStatus {return{...status,...getAudioPreferences(),state:context?.state??status.state};}
+export function subscribeAudio(fn:()=>void):()=>void {listeners.add(fn);return()=>listeners.delete(fn);}
+function diagnostic(cue:SoundCue|"activation",result:AudioStatus["lastResult"],error?:unknown){if(process.env.NODE_ENV!=="development")return;const activation=typeof navigator!=="undefined"&&"userActivation" in navigator?(navigator as Navigator&{userActivation:{isActive:boolean;hasBeenActive:boolean}}).userActivation:undefined;console.debug("[Underworld audio]",{context:context?.state??"unavailable",userActivation:activation,muted:getAudioPreferences().muted,volume:getAudioPreferences().effectsVolume,cue,result,error:error instanceof Error?error.message:error});}
+function audioContext():AudioContext|null {if(typeof window==="undefined")return null;try{const Klass=window.AudioContext||(window as typeof window&{webkitAudioContext?:typeof AudioContext}).webkitAudioContext;if(!Klass)return null;context??=new Klass();update({state:context.state});context.onstatechange=()=>update({state:context?.state??"unavailable"});return context;}catch(error){update({state:"unavailable",error:error instanceof Error?error.message:"Audio initialization failed"});return null;}}
+type Voice={at:number;frequency:number;duration:number;type?:OscillatorType;level?:number;endFrequency?:number};
+const SCORE:Record<SoundCue,Voice[]>={
+ join:[{at:0,frequency:174,duration:.16},{at:.09,frequency:261,duration:.22}],copy:[{at:0,frequency:620,duration:.08,type:"triangle",level:.35}],
+ "message-private":[{at:0,frequency:740,duration:.07,level:.35},{at:.1,frequency:554,duration:.14,type:"triangle",level:.3}],"message-public":[{at:0,frequency:440,duration:.08,level:.22}],
+ "deal-incoming":[{at:0,frequency:123,duration:.24,type:"triangle"},{at:.16,frequency:185,duration:.3}],"deal-accepted":[{at:0,frequency:220,duration:.18},{at:.12,frequency:330,duration:.28},{at:.24,frequency:494,duration:.3}],"deal-rejected":[{at:0,frequency:147,duration:.2,type:"sawtooth",endFrequency:92}],
+ briefing:[{at:0,frequency:73,duration:.55,level:.7},{at:.2,frequency:147,duration:.45,type:"triangle",level:.35}],phase:[{at:0,frequency:98,duration:.32,type:"triangle"},{at:.16,frequency:196,duration:.28,level:.35}],
+ "card-select":[{at:0,frequency:880,duration:.045,type:"triangle",level:.22},{at:.045,frequency:330,duration:.055,type:"square",level:.18}],"card-lock":[{at:0,frequency:196,duration:.12,type:"square",level:.45},{at:.08,frequency:98,duration:.25,level:.65}],
+ deploy:[{at:0,frequency:82,duration:.4,level:.8,endFrequency:49},{at:.08,frequency:246,duration:.12,type:"triangle",level:.25}],reveal:[{at:0,frequency:164,duration:.18,type:"triangle",level:.4},{at:.12,frequency:246,duration:.2,level:.32}],
+ success:[{at:0,frequency:330,duration:.14,level:.35},{at:.1,frequency:494,duration:.25,level:.4}],failure:[{at:0,frequency:110,duration:.28,type:"sawtooth",endFrequency:65}],
+ capture:[{at:0,frequency:55,duration:.55,level:1},{at:.18,frequency:110,duration:.42,type:"triangle",level:.5},{at:.42,frequency:330,duration:.34,level:.38}],betrayal:[{at:0,frequency:233,duration:.09,type:"sawtooth",level:.55},{at:.08,frequency:58,duration:.58,type:"sawtooth",level:.9,endFrequency:41}],
+ results:[{at:0,frequency:147,duration:.3},{at:.2,frequency:220,duration:.35}],victory:[{at:0,frequency:110,duration:.65,level:.75},{at:.18,frequency:220,duration:.52,type:"triangle",level:.5},{at:.42,frequency:330,duration:.5,level:.5},{at:.65,frequency:440,duration:.7,level:.55}],countdown:[{at:0,frequency:392,duration:.13,level:.35}],test:[{at:0,frequency:220,duration:.15},{at:.12,frequency:330,duration:.17},{at:.26,frequency:494,duration:.3}]
+};
+function schedule(cue:SoundCue,options:CueOptions={}):boolean {const prefs=getAudioPreferences(),ctx=audioContext(),now=typeof performance==="undefined"?Date.now():performance.now();const finish=(result:AudioStatus["lastResult"],error?:unknown)=>{update({lastCue:cue,lastResult:result,error:error instanceof Error?error.message:undefined});diagnostic(cue,result,error);return result==="scheduled";};if(!options.force&&(prefs.muted||prefs.effectsVolume<=0))return finish("muted");if(!ctx||ctx.state!=="running")return finish("locked");if(options.eventId&&played.has(options.eventId))return finish("duplicate");const priority=["victory","betrayal","capture","deal-incoming"].includes(cue);if(!options.force&&!priority&&now-lastScheduledAt<90)return finish("throttled");try{const start=ctx.currentTime+.012,master=ctx.createGain();master.gain.value=Math.max(.0001,prefs.effectsVolume*.13);master.connect(ctx.destination);for(const voice of SCORE[cue]){const oscillator=ctx.createOscillator(),gain=ctx.createGain();oscillator.type=voice.type??"sine";oscillator.frequency.setValueAtTime(voice.frequency,start+voice.at);if(voice.endFrequency)oscillator.frequency.exponentialRampToValueAtTime(voice.endFrequency,start+voice.at+voice.duration);const peak=Math.max(.0001,voice.level??.5);gain.gain.setValueAtTime(.0001,start+voice.at);gain.gain.exponentialRampToValueAtTime(peak,start+voice.at+.018);gain.gain.exponentialRampToValueAtTime(.0001,start+voice.at+voice.duration);oscillator.connect(gain);gain.connect(master);oscillator.start(start+voice.at);oscillator.stop(start+voice.at+voice.duration+.025);}lastScheduledAt=now;if(options.eventId){played.set(options.eventId,Date.now());if(played.size>300)played.delete(played.keys().next().value!);}return finish("scheduled");}catch(error){return finish("error",error);}}
+export async function enableAudio():Promise<boolean>{const value=audioContext();if(!value){diagnostic("activation","error","WebAudio unavailable");return false;}try{if(value.state!=="running")await value.resume();if(value.state!=="running"){update({state:value.state,enabled:false,error:"Sound remains blocked by the browser"});diagnostic("activation","locked");return false;}setAudioPreferences({...getAudioPreferences(),enabled:true,muted:false});const confirmed=schedule("test",{force:true,eventId:`activation:${Date.now()}`});if(!confirmed){const error=getAudioStatus().error??"Confirmation sound could not be scheduled";setAudioPreferences({...getAudioPreferences(),enabled:false});update({state:value.state,enabled:false,error});}else update({state:value.state,enabled:true,error:undefined});return confirmed;}catch(error){setAudioPreferences({...getAudioPreferences(),enabled:false});update({enabled:false,lastResult:"error",error:error instanceof Error?error.message:"Audio activation failed"});diagnostic("activation","error",error);return false;}}
+export const unlockAudio=enableAudio;
+export function testSound():boolean{return schedule("test",{force:true,eventId:`test:${Date.now()}`});}
+export function playCue(cue:SoundCue,options:CueOptions={}):boolean{if(!getAudioPreferences().enabled){update({lastCue:cue,lastResult:"locked"});diagnostic(cue,"locked");return false;}return schedule(cue,options);}
+export function __resetAudioForTests():void{context=null;lastScheduledAt=0;played.clear();status={state:"unavailable",enabled:false,muted:false,effectsVolume:.55};}

@@ -1,22 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { getAudioPreferences, setAudioPreferences } from "./audio";
-
-function memoryStorage(initial: Record<string, string> = {}) {
-  const values = new Map(Object.entries(initial));
-  return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, values };
-}
-
-describe("audio preferences", () => {
-  it("defaults to a restrained volume and migrates the legacy mute preference", () => {
-    expect(getAudioPreferences(memoryStorage() as unknown as Storage)).toEqual({ muted: false, effectsVolume: .55 });
-    expect(getAudioPreferences(memoryStorage({ "underworld.sound.effects": "muted" }) as unknown as Storage).muted).toBe(true);
-  });
-
-  it("persists mute and clamps effects volume", () => {
-    const storage = memoryStorage();
-    setAudioPreferences({ muted: true, effectsVolume: 2 }, storage as unknown as Storage);
-    expect(storage.values.get("underworld.audio.muted")).toBe("true");
-    expect(storage.values.get("underworld.audio.effects-volume")).toBe("1");
-    expect(getAudioPreferences(storage as unknown as Storage)).toEqual({ muted: true, effectsVolume: 1 });
-  });
+import {beforeEach,describe,expect,it,vi} from "vitest";
+import {__resetAudioForTests,enableAudio,getAudioPreferences,getAudioStatus,playCue,setAudioPreferences,testSound} from "./audio";
+function memoryStorage(initial:Record<string,string>={}){const values=new Map(Object.entries(initial));return{getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>void values.set(key,value),values};}
+function installAudio(state:AudioContextState="running",fail=false){const starts=vi.fn();class MockContext{state=state;currentTime=1;destination={};onstatechange:null|(()=>void)=null;resume=vi.fn(async()=>{this.state="running";});createGain(){if(fail)throw new Error("device failure");return{gain:{value:0,setValueAtTime:vi.fn(),exponentialRampToValueAtTime:vi.fn()},connect:vi.fn()};}createOscillator(){return{type:"sine",frequency:{setValueAtTime:vi.fn(),exponentialRampToValueAtTime:vi.fn()},connect:vi.fn(),start:starts,stop:vi.fn()};}}Object.assign(globalThis.window,{AudioContext:MockContext});return starts;}
+beforeEach(()=>{const storage=memoryStorage();vi.stubGlobal("localStorage",storage);vi.stubGlobal("window",{localStorage:storage});vi.stubGlobal("navigator",{userActivation:{isActive:true,hasBeenActive:true}});vi.stubGlobal("performance",{now:()=>1000});__resetAudioForTests();vi.restoreAllMocks();});
+describe("audio preferences",()=>{it("defaults safely, migrates legacy mute, persists activation, and clamps volume",()=>{expect(getAudioPreferences(memoryStorage() as unknown as Storage)).toEqual({muted:false,effectsVolume:.55,enabled:false});expect(getAudioPreferences(memoryStorage({"underworld.sound.effects":"muted"}) as unknown as Storage).muted).toBe(true);const storage=memoryStorage();setAudioPreferences({muted:true,effectsVolume:2,enabled:true},storage as unknown as Storage);expect(getAudioPreferences(storage as unknown as Storage)).toEqual({muted:true,effectsVolume:1,enabled:true});});});
+describe("audio engine",()=>{
+ it("resumes in a user activation flow and schedules confirmation",async()=>{const starts=installAudio("suspended");expect(await enableAudio()).toBe(true);expect(getAudioStatus()).toMatchObject({state:"running",enabled:true,lastCue:"test",lastResult:"scheduled"});expect(starts).toHaveBeenCalled();});
+ it("honors mute and volume",async()=>{installAudio();await enableAudio();setAudioPreferences({muted:true,effectsVolume:.7,enabled:true});expect(playCue("capture",{eventId:"capture:1"})).toBe(false);expect(getAudioStatus().lastResult).toBe("muted");setAudioPreferences({muted:false,effectsVolume:0,enabled:true});expect(playCue("capture",{eventId:"capture:2"})).toBe(false);});
+ it("maps signature events and deduplicates stable ids",async()=>{installAudio();await enableAudio();for(const cue of ["card-select","card-lock","message-private","deal-incoming","deal-accepted","deploy","reveal","capture","betrayal","results","victory"] as const)expect(playCue(cue,{eventId:`event:${cue}`,force:true})).toBe(true);expect(playCue("victory",{eventId:"event:victory",force:true})).toBe(false);expect(getAudioStatus().lastResult).toBe("duplicate");});
+ it("reports scheduling failures rather than claiming playback",async()=>{installAudio("running",true);expect(await enableAudio()).toBe(false);expect(getAudioStatus()).toMatchObject({enabled:false,lastResult:"error",error:"device failure"});expect(testSound()).toBe(false);});
 });

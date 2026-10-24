@@ -23,7 +23,7 @@ export function PhaseAnnouncement({ state }: { state: PublicState }) {
     const availableAt = state.room.actionAvailableAt ?? state.room.phaseStartedAt ?? 0;
     const remaining = availableAt - state.room.serverNow;
     if (remaining <= 0) { setVisible(false); return; }
-    setVisible(true); playCue(game.phase === "finale" ? "victory" : game.phase === "round-results" ? "results" : "phase");
+    setVisible(true); playCue(game.phase === "finale" ? "victory" : game.phase === "round-results" ? "results" : "phase", { eventId: `phase:${game.matchId}:${game.round}:${game.phase}` });
     const timer = window.setTimeout(() => setVisible(false), remaining);
     return () => window.clearTimeout(timer);
   }, [game.matchId, game.phase, game.round, reduced, state.room.actionAvailableAt, state.room.phaseStartedAt, state.room.serverNow]);

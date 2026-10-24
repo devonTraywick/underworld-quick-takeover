@@ -11,7 +11,7 @@ import { playCue } from "../lib/audio";
 type Event = PublicGame["cinematicEvents"][number];
 const ART: Record<CardType, number> = { infiltrate: 0, fortify: 1, sabotage: 2, "shake-down": 3, surveillance: 4, "double-cross": 5 };
 
-function cue(type: Event["type"]): void { playCue(type === "district-captured" ? "capture" : type === "deal-broken" ? "betrayal" : type === "operation-blocked" ? "failure" : type === "operation-revealed" ? "reveal" : "success"); }
+function cue(event: Event): void { playCue(event.type === "district-captured" ? "capture" : event.type === "deal-broken" ? "betrayal" : event.type === "operation-blocked" ? "failure" : event.type === "operation-revealed" ? "reveal" : "success", { eventId: `reveal:${event.id}` }); }
 
 function consequence(event: Event, game: PublicGame): string {
   const actor = game.players.find((player) => player.id === event.actorId)?.nickname ?? "A syndicate";
@@ -42,7 +42,7 @@ export function CinematicReveal({ state, replay = false, onEffect, onClose }: { 
     update(); const timer = window.setInterval(update, 120); return () => window.clearInterval(timer);
   }, [beat, events.length, replay, replayStarted, skipped, state.room.actionAvailableAt, state.room.phaseStartedAt, state.room.serverNow]);
   const current = skipped ? events.at(-1) : events[index];
-  useEffect(() => { onEffect?.(current ?? null); if (current) cue(current.type); return () => onEffect?.(null); }, [current?.id]);
+  useEffect(() => { onEffect?.(current ?? null); if (current) cue(current); return () => onEffect?.(null); }, [current?.id]);
   const visible = skipped ? events : events.slice(0, Math.max(0, index + 1));
   const operation = [...visible].reverse().find((event) => event.type === "operation-revealed");
   const actor = game.players.find((player) => player.id === operation?.actorId); const card = operation?.cardType ? CARD_GUIDE[operation.cardType] : null;

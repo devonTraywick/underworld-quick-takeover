@@ -12,12 +12,13 @@ import { CinematicReveal } from "../components/cinematic-reveal";
 import { CopyButton } from "../components/copy-button";
 import { MissionBriefing } from "../components/mission-briefing";
 import { SocialNotifications } from "../components/social-notifications";
+import { AudioControls } from "../components/audio-controls";
 import { useGame } from "../lib/use-game";
 import type { PrivateState, PublicGame, PublicState } from "../lib/types";
 import { useSocialAttention, type SocialNotice, type SocialSection } from "../lib/social-attention";
 import { CARD_GUIDE, PHASE_INSTRUCTIONS, SCORE_RULES, TIEBREAK_COPY } from "../lib/game-guide";
 import { OBJECTIVE_NAMES, objectiveExplanation } from "../lib/objectives";
-import { getAudioPreferences, playCue, setAudioPreferences, unlockAudio } from "../lib/audio";
+import { playCue } from "../lib/audio";
 
 const CARD_COPY = Object.fromEntries(Object.entries(CARD_GUIDE).map(([type, card]) => [type, { name: card.name, symbol: card.symbol, copy: card.summary }])) as Record<CardType, { name: string; symbol: string; copy: string }>;
 
@@ -37,8 +38,8 @@ function useCountdown(state: PublicState | null): number | null {
 function AttentionAudio({ state, privateState, countdown }: { state: PublicState; privateState: PrivateState | null; countdown: number | null }) {
   const warned = useRef(""); const submitted = useRef(false); const game = state.game!;
   const isSubmitted = game.phase === "draft" ? Boolean(privateState?.draftPreferences.length) : game.phase === "operations" ? Boolean(privateState?.operation) : false;
-  useEffect(() => { const key = `${game.matchId}:${game.round}:${game.phase}`; if (countdown !== null && countdown <= 5_000 && countdown > 0 && warned.current !== key) { warned.current = key; playCue("countdown"); } }, [countdown, game.matchId, game.phase, game.round]);
-  useEffect(() => { if (isSubmitted && !submitted.current) playCue(game.phase === "draft" ? "card-lock" : "deploy"); submitted.current = isSubmitted; }, [game.phase, isSubmitted]);
+  useEffect(() => { const key = `${game.matchId}:${game.round}:${game.phase}`; if (countdown !== null && countdown <= 5_000 && countdown > 0 && warned.current !== key) { warned.current = key; playCue("countdown", { eventId: `countdown:${key}` }); } }, [countdown, game.matchId, game.phase, game.round]);
+  useEffect(() => { if (isSubmitted && !submitted.current) playCue(game.phase === "draft" ? "card-lock" : "deploy", { eventId: `submission:${game.matchId}:${game.round}:${game.phase}` }); submitted.current = isSubmitted; }, [game.matchId, game.phase, game.round, isSubmitted]);
   return null;
 }
 
@@ -82,8 +83,6 @@ export default function Home() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [revealEffect, setRevealEffect] = useState<PublicGame["cinematicEvents"][number] | null>(null);
   const [operationDistrict, setOperationDistrict] = useState<DistrictId | undefined>();
-  const [soundMuted, setSoundMuted] = useState(false);
-  const [effectsVolume, setEffectsVolume] = useState(.55);
   const [missionNotice, setMissionNotice] = useState<string | null>(null);
   const priorMissionProgress = useRef<Record<string, number> | null>(null);
   const playerId = game.session?.playerId ?? "";
@@ -92,9 +91,7 @@ export default function Home() {
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("room");
     if (code) { setRoomCode(code.toUpperCase()); setMode("join"); }
-    const audio = getAudioPreferences(); setSoundMuted(audio.muted); setEffectsVolume(audio.effectsVolume);
   }, []);
-  useEffect(() => { const activate = () => void unlockAudio(); window.addEventListener("pointerdown", activate, { once: true }); return () => window.removeEventListener("pointerdown", activate); }, []);
   useEffect(() => {
     if (!game.privateState) return;
     const next = Object.fromEntries(game.privateState.objectives.map((objective) => [objective.id, objective.current]));
@@ -110,6 +107,7 @@ export default function Home() {
     <div className="entry-art-fill" aria-hidden="true" />
     <div className="entry-art" aria-hidden="true" />
     <h1 className="sr-only">Underworld: Quick Takeover</h1>
+    <AudioControls compact />
     <section className="entry-card" aria-label="Enter a game room">
       <div className="entry-card-heading"><span><b>U·Q</b></span><div><p>Private table</p><h2>Enter the underworld</h2></div></div>
       <div className="entry-tabs"><button className={mode === "create" ? "active" : ""} onClick={() => setMode("create")}>Create a room</button><button className={mode === "join" ? "active" : ""} onClick={() => setMode("join")}>Join by code</button></div>
@@ -177,7 +175,7 @@ export default function Home() {
     </div>
     <nav className="mobile-utility" aria-label="Command panels"><button onClick={() => { setMobileOverlay(mobileOverlay === "objectives" ? null : "objectives"); attention.markObjectives(); }}>Missions{attention.objectiveProgress && <i className="attention-dot" />}</button><button className={attention.unreadDeals > 0 ? "has-alert" : ""} onClick={() => openSocial(publicGame.phase === "negotiation" ? "deals" : "public", undefined, publicGame.phase === "negotiation")}><span>{publicGame.phase === "negotiation" ? "Make Deal" : "The Wire"}</span>{attention.unreadPublic + attention.unreadPrivate + attention.unreadDeals > 0 && <b className="attention-count">{attention.unreadPublic + attention.unreadPrivate + attention.unreadDeals}</b>}</button></nav>
     <button className="mobile-menu-trigger" onClick={() => setMenuOpen(true)} aria-label="Open match menu">☰</button>
-    {menuOpen && <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="Match menu"><section className="match-menu panel"><span className="eyebrow">Match control</span><h2>The back room</h2><button onClick={() => setMenuOpen(false)}>Resume</button><button onClick={() => { setHelpOpen(true); setMenuOpen(false); }}>How to play & score</button><button onClick={() => { setHistoryOpen(true); setMenuOpen(false); }}>Review round history</button>{game.publicState.room.hostPlayerId === game.session?.playerId && <button className="danger-action" onClick={async () => { if (window.confirm("End the match? A 20-second vote will pause play and may produce provisional final results.")) await game.proposeEndMatch(); setMenuOpen(false); }}>End Match</button>}<button onClick={() => void game.leaveRoom()}>Leave Match</button><button aria-pressed={soundMuted} onClick={() => { const next = !soundMuted; setSoundMuted(next); setAudioPreferences({ muted: next, effectsVolume }); if (!next) void unlockAudio(); }}>{soundMuted ? "Master sound · Muted" : "Master sound · On"}</button><label className="volume-control">Effects volume <input aria-label="Effects volume" type="range" min="0" max="100" value={Math.round(effectsVolume * 100)} onChange={(event) => { const next = Number(event.target.value) / 100; setEffectsVolume(next); setAudioPreferences({ muted: soundMuted, effectsVolume: next }); }} /></label><button onClick={() => { setMenuOpen(false); window.dispatchEvent(new Event("underworld:tutorial")); }}>Replay Tutorial</button></section></div>}
+    {menuOpen && <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="Match menu"><section className="match-menu panel"><span className="eyebrow">Match control</span><h2>The back room</h2><button onClick={() => setMenuOpen(false)}>Resume</button><button onClick={() => { setHelpOpen(true); setMenuOpen(false); }}>How to play & score</button><button onClick={() => { setHistoryOpen(true); setMenuOpen(false); }}>Review round history</button>{game.publicState.room.hostPlayerId === game.session?.playerId && <button className="danger-action" onClick={async () => { if (window.confirm("End the match? A 20-second vote will pause play and may produce provisional final results.")) await game.proposeEndMatch(); setMenuOpen(false); }}>End Match</button>}<button onClick={() => void game.leaveRoom()}>Leave Match</button><AudioControls /><button onClick={() => { setMenuOpen(false); window.dispatchEvent(new Event("underworld:tutorial")); }}>Replay Tutorial</button></section></div>}
     {helpOpen && <GameHelp onClose={() => setHelpOpen(false)} />}
     {historyOpen && <RoundHistory game={publicGame} onClose={() => setHistoryOpen(false)} />}
     {game.publicState.room.endMatchVote && <EndMatchVote state={game.publicState} playerId={game.session?.playerId ?? ""} busy={game.busy} vote={game.voteEndMatch} />}
@@ -191,6 +189,7 @@ function Lobby({ state, playerId, busy, error, onStart, onLeave, onPacing }: { s
   const joinUrl = typeof window === "undefined" ? "" : window.location.href;
   return <main className="lobby-page">
     <Onboarding />
+    <AudioControls compact />
     <header className="lobby-brand"><div className="brand-seal"><span>U·Q</span></div><div><p className="eyebrow">Private table</p><h1>Gather the families</h1></div></header>
     <section className="room-code-card"><span>Room code</span><strong>{state.room.code}</strong><div className="room-copy-actions"><CopyButton value={joinUrl} label="Copy invite link" /><CopyButton value={state.room.code} label="Copy room code" /></div></section>
     <section className="lobby-table panel"><header><div><span className="eyebrow">The guest list</span><h2>{state.room.players.length} of 8 syndicates</h2></div><span className="live-pill">Room open</span></header>

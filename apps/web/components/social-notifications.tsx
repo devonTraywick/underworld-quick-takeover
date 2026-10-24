@@ -11,7 +11,8 @@ export function SocialNotifications({ notices, game, onOpen, onDismiss }: { noti
   useEffect(() => {
     if (!active || active.key === sounded.current) return;
     sounded.current = active.key;
-    playCue(active.kind === "deal-proposed" ? "deal-incoming" : active.kind === "deal-accepted" ? "deal-accepted" : active.kind === "deal-rejected" ? "deal-rejected" : "join");
+    const cue = active.kind === "deal-proposed" ? "deal-incoming" : active.kind === "deal-accepted" ? "deal-accepted" : active.kind === "deal-rejected" ? "deal-rejected" : active.kind === "private" ? "message-private" : "message-public";
+    playCue(cue, { eventId: `social:${active.key}` });
   }, [active]);
   if (!active) return null;
   const actor = game.players.find((player) => player.id === active.actorId);
