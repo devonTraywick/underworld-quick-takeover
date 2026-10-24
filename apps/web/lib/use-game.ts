@@ -62,11 +62,19 @@ export function useGame() {
   const run = useCallback(async (event: string, payload: object, includeVersion = true): Promise<CommandAck> => {
     setBusy(true); setError(null);
     try {
-      let ack = await emitRaw<CommandAck>(event, {
+      const request = {
         commandId: commandId(),
         ...(includeVersion ? { expectedStateVersion: publicStateRef.current?.stateVersion ?? 0 } : {}),
         ...payload,
-      });
+      };
+      let ack: CommandAck;
+      try { ack = await emitRaw<CommandAck>(event, request); }
+      catch (firstError) {
+        if (!includeVersion) throw firstError;
+        // Versioned commands are server-idempotent. Reuse the exact command ID so a lost acknowledgement
+        // can be recovered without applying the action twice on a slow mobile connection.
+        ack = await emitRaw<CommandAck>(event, request);
+      }
       if (includeVersion && !ack.ok && ack.error?.code === "STALE_VERSION") {
         await new Promise<void>((resolve) => {
           const socket = socketRef.current;

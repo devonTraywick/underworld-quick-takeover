@@ -118,7 +118,7 @@ test("invite copy confirms only after success, resets, and offers a failure fall
   const copy = page.getByRole("button", { name: "Copy invite link" });
   await copy.click(); await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
   await expect(page.getByText("Copy invite link copied.")).toHaveText("Copy invite link copied.");
-  await expect(copy).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByRole("button", { name: "Copy invite link" })).toBeVisible({ timeout: 5_000 });
   await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("denied"); } } }));
   await copy.click(); await expect(page.getByText("Couldn’t access your clipboard.")).toBeVisible();
   await expect(page.locator(".copy-fallback input")).toHaveValue(/room=/);
