@@ -122,8 +122,11 @@ test("desktop lobby expands setup controls without requiring page scrolling", as
     const roster = await page.locator(".lobby-roster").boundingBox();
     const controls = await page.locator(".lobby-controls").boundingBox();
     const table = await page.locator(".lobby-table").boundingBox();
+    const audio = await page.getByRole("region", { name: "Sound controls" }).boundingBox();
+    const roomCode = await page.locator(".room-code-card strong").boundingBox();
     expect(controls!.x).toBeGreaterThan(roster!.x + roster!.width);
     expect(table!.width).toBeGreaterThan(viewport.width * .8);
+    expect(audio!.x + audio!.width).toBeLessThanOrEqual(roomCode!.x);
     await context.close();
   }
 });

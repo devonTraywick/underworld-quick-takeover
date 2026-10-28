@@ -189,9 +189,8 @@ function Lobby({ state, playerId, busy, error, onStart, onLeave, onPacing }: { s
   const joinUrl = typeof window === "undefined" ? "" : window.location.href;
   return <main className="lobby-page">
     <Onboarding />
-    <AudioControls compact />
     <header className="lobby-brand"><div className="brand-seal"><span>U·Q</span></div><div><p className="eyebrow">Private table</p><h1>Gather the families</h1></div></header>
-    <section className="room-code-card"><span>Room code</span><strong>{state.room.code}</strong><div className="room-copy-actions"><CopyButton value={joinUrl} label="Copy invite link" /><CopyButton value={state.room.code} label="Copy room code" /></div></section>
+    <section className="room-code-card"><span>Room code</span><strong>{state.room.code}</strong><div className="room-copy-actions"><CopyButton value={joinUrl} label="Copy invite link" /><CopyButton value={state.room.code} label="Copy room code" /></div><AudioControls compact /></section>
     <section className="lobby-table panel"><header><div><span className="eyebrow">The guest list</span><h2>{state.room.players.length} of 8 syndicates</h2></div><span className="live-pill">Room open</span></header>
       <div className="lobby-roster">
         <div className="player-list">{state.room.players.map((player, index) => <article key={player.id}><span className={`boss-avatar boss-${index}`} /><i style={{ background: FACTIONS[index] }} /><div><b>{player.nickname}</b><span>{player.id === state.room.hostPlayerId ? "Host · " : ""}{player.connected ? "At the table" : "Reconnecting"}</span></div><em>{String(index + 1).padStart(2, "0")}</em></article>)}</div>
