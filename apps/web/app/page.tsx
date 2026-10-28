@@ -54,7 +54,7 @@ const PHASE_GUIDANCE: Record<PublicGame["phase"], { title: string; copy: string 
   finale: { title: "FINALE — The books are closed", copy: PHASE_INSTRUCTIONS.finale },
 };
 
-function PhaseGuide({ state, privateState, playerId, countdown, incomingDeals }: { state: PublicState; privateState: PrivateState | null; playerId: string; countdown: number | null; incomingDeals: number }) {
+function PhaseGuide({ state, privateState, playerId, countdown, incomingDeals, onOpenOrders }: { state: PublicState; privateState: PrivateState | null; playerId: string; countdown: number | null; incomingDeals: number; onOpenOrders: () => void }) {
   const game = state.game!; const guide = PHASE_GUIDANCE[game.phase];
   const submitted = game.phase === "draft" ? (privateState?.draftPreferences.length ?? 0) > 0 : game.phase === "operations" ? Boolean(privateState?.operation) : false;
   const readyCount = game.phase === "draft" ? game.submissionCount : game.operationSubmissionCount;
@@ -65,7 +65,16 @@ function PhaseGuide({ state, privateState, playerId, countdown, incomingDeals }:
         : game.phase === "negotiation" ? `${state.room.readyCount}/${game.players.length} players ready`
           : game.phase === "round-results" ? `${state.room.readyCount}/${game.players.length} ready to continue` : "Server phase in progress";
   const seconds = countdown === null ? null : Math.ceil(countdown / 1000);
-  return <section className={`phase-guide ${incomingDeals > 0 ? "has-alert" : ""} ${seconds !== null && seconds <= 10 ? "timer-amber" : ""} ${seconds !== null && seconds <= 5 ? "timer-critical" : ""}`} aria-live="polite"><div><span>{guide.title}</span><p>{guide.copy}</p>{game.round === 1 && <small className="first-match-reminder">First match: Make a deal → Choose a card → Pick a target.</small>}</div><strong>{action}</strong>{seconds !== null && <time aria-label={`${seconds} seconds remaining`}>{seconds}<small>sec</small></time>}<span className="sr-only">Current player: {playerId}</span></section>;
+  return <section className={`phase-guide ${incomingDeals > 0 ? "has-alert" : ""} ${seconds !== null && seconds <= 10 ? "timer-amber" : ""} ${seconds !== null && seconds <= 5 ? "timer-critical" : ""}`} aria-live="polite"><div><span>{guide.title}</span><p>{guide.copy}</p>{game.round === 1 && <small className="first-match-reminder">First match: Make a deal → Choose a card → Pick a target.</small>}</div><strong>{action}</strong>{privateState && <SecretOrdersIndicator privateState={privateState} onOpen={onOpenOrders} />}{seconds !== null && <time aria-label={`${seconds} seconds remaining`}>{seconds}<small>sec</small></time>}<span className="sr-only">Current player: {playerId}</span></section>;
+}
+
+function SecretOrdersIndicator({ privateState, onOpen }: { privateState: PrivateState; onOpen: () => void }) {
+  const primary = privateState.objectives.find((objective) => objective.tier === "primary") ?? privateState.objectives[0]!;
+  const qualifying = privateState.objectives.filter((objective) => objective.completed).length;
+  const status = primary.completed ? (primary.kind === "cumulative" ? "Secured" : "Qualifying now") : `${primary.current}/${primary.target}`;
+  return <button type="button" className={`secret-orders-indicator ${primary.completed ? "qualifying" : ""}`} onClick={onOpen} aria-label={`Open private Secret Orders. ${OBJECTIVE_NAMES[primary.id] ?? primary.id}, ${status}`}>
+    <span>Secret Orders · Private</span><b>{OBJECTIVE_NAMES[primary.id] ?? primary.id}<em>{primary.points} pts</em></b><i><u style={{ width: `${Math.min(100, primary.current / Math.max(1, primary.target) * 100)}%` }} /></i><small>{status} · {qualifying}/3 qualifying</small>
+  </button>;
 }
 
 export default function Home() {
@@ -83,7 +92,7 @@ export default function Home() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [revealEffect, setRevealEffect] = useState<PublicGame["cinematicEvents"][number] | null>(null);
   const [operationDistrict, setOperationDistrict] = useState<DistrictId | undefined>();
-  const [missionNotice, setMissionNotice] = useState<string | null>(null);
+  const [missionNotice, setMissionNotice] = useState<{ id: string; text: string } | null>(null);
   const priorMissionProgress = useRef<Record<string, number> | null>(null);
   const playerId = game.session?.playerId ?? "";
   const attention = useSocialAttention(game.publicState, game.privateState, playerId);
@@ -98,7 +107,8 @@ export default function Home() {
     const advanced = game.privateState.objectives.find((objective) => priorMissionProgress.current && objective.current > (priorMissionProgress.current[objective.id] ?? 0));
     priorMissionProgress.current = next;
     if (!advanced) return;
-    setMissionNotice(`${OBJECTIVE_NAMES[advanced.id] ?? advanced.id}: ${advanced.current} of ${advanced.target}${advanced.completed ? " — complete" : ""}`); playCue("success");
+    const status = advanced.completed ? (advanced.kind === "cumulative" ? " — secured" : " — qualifying now") : "";
+    setMissionNotice({ id: advanced.id, text: `${OBJECTIVE_NAMES[advanced.id] ?? advanced.id}: ${advanced.current} of ${advanced.target}${status}` }); playCue("success");
     const timer = window.setTimeout(() => setMissionNotice(null), 3_500); return () => window.clearTimeout(timer);
   }, [game.privateState]);
 
@@ -134,6 +144,8 @@ export default function Home() {
   };
   const openNotice = (notice: SocialNotice) => { attention.dismiss(notice.key); openSocial(notice.section, notice.actorId); };
   const needsMapTarget = publicGame.phase === "operations" && ["infiltrate", "fortify", "sabotage", "double-cross"].includes(game.privateState?.draftedCard?.type ?? "");
+  const operationCardType = game.privateState?.draftedCard?.type;
+  const eligibleDistricts = needsMapTarget ? publicGame.activeDistricts.filter((districtId) => operationCardType !== "sabotage" || publicGame.players.some((player) => player.id !== playerId && (publicGame.districts[districtId]?.stakes[player.id] ?? 0) > 0)) : undefined;
   const selectedDistrict = publicGame.phase === "operations" ? (needsMapTarget ? operationDistrict : undefined) : revealEffect?.districtId;
   return <main className={`game-page phase-${publicGame.phase}`}>
     <Onboarding allowOffer={false} />
@@ -147,15 +159,15 @@ export default function Home() {
       <div className="roster-strip" aria-label="Player roster">{publicGame.players.map((player) => <button type="button" key={player.id} className={player.id === me?.id ? "current" : ""} disabled={player.id === playerId} onClick={() => openSocial("private", player.id)} aria-label={player.id === playerId ? `${player.nickname}, your syndicate` : `Open private line with ${player.nickname}`}><span className={`boss-avatar boss-${player.seat}`} /><b>{player.nickname}</b><em>{player.influence}</em></button>)}</div>
       <div className="player-chip"><span className={`boss-avatar boss-${me?.seat ?? 0}`} /><span>{me?.nickname}<small><b className={game.connected ? "online" : "offline"}>{game.connected ? "Live" : "Reconnecting"}</b> · {me?.influence ?? 0} Influence</small></span><button className="match-menu-trigger" onClick={() => setMenuOpen(true)} aria-label="Open match menu">☰</button></div>
     </header>
-    <PhaseGuide state={game.publicState} privateState={game.privateState} playerId={playerId} countdown={countdown} incomingDeals={attention.pendingDeals} />
+    <PhaseGuide state={game.publicState} privateState={game.privateState} playerId={playerId} countdown={countdown} incomingDeals={attention.pendingDeals} onOpenOrders={() => { setMobileOverlay("objectives"); attention.markObjectives(); }} />
     <SocialNotifications notices={attention.notices} game={publicGame} onOpen={openNotice} onDismiss={attention.dismiss} />
     <div className="command-center">
       <aside className={`boss-column ${mobileOverlay === "objectives" ? "mobile-open" : ""}`}>
         <button className="mobile-close" onClick={() => setMobileOverlay(null)} aria-label="Close objectives">×</button>
         <section className="boss-dossier panel"><div className={`boss-portrait boss-${me?.seat ?? 0}`}><span>{me?.nickname}</span></div><div className="syndicate-meta"><span>Your syndicate</span><strong>{me?.nickname}</strong><p><b>{me?.influence ?? 0}</b> Influence · Seat {(me?.seat ?? 0) + 1}</p></div></section>
-        {game.privateState && <Objectives privateState={game.privateState} game={publicGame} playerId={game.session?.playerId ?? ""} />}
+        {game.privateState && <Objectives privateState={game.privateState} game={publicGame} playerId={game.session?.playerId ?? ""} highlightedObjectiveId={missionNotice?.id} />}
       </aside>
-      <section className={`map-column ${needsMapTarget && !game.privateState?.operation ? "target-required" : ""}`}><CityMap game={publicGame} selected={selectedDistrict} effect={revealEffect} currentPlayerId={playerId} operationName={publicGame.phase === "operations" ? CARD_COPY[game.privateState?.draftedCard?.type ?? "infiltrate"].name : undefined} onSelect={needsMapTarget ? setOperationDistrict : undefined} /><div className="map-caption"><span>{needsMapTarget ? "Select a target" : "City control"}</span><p>{needsMapTarget ? "Tap an eligible district, then deploy your operation." : "Highest stake owns the district. A new tie leaves it contested."}</p></div></section>
+      <section className={`map-column ${needsMapTarget && !game.privateState?.operation ? "target-required" : ""}`}><CityMap game={publicGame} selected={selectedDistrict} effect={revealEffect} currentPlayerId={playerId} operationName={publicGame.phase === "operations" ? CARD_COPY[game.privateState?.draftedCard?.type ?? "infiltrate"].name : undefined} eligibleDistricts={eligibleDistricts} onSelect={needsMapTarget ? setOperationDistrict : undefined} /><div className="map-caption"><span>{needsMapTarget ? "Select a target" : "City control"}</span><p>{needsMapTarget ? operationCardType === "sabotage" ? "Gold districts contain removable rival stake. Other districts use the legal +1 Influence fallback." : "Gold districts are valid targets. Select one, then deploy." : "Highest stake owns the district. A new tie leaves it contested."}</p></div></section>
       <aside className={`social-column social-hub ${mobileOverlay === "wire" ? "mobile-open" : ""}`} aria-label="Social hub">
         <button className="mobile-close" onClick={() => setMobileOverlay(null)} aria-label="Close social hub">×</button>
         <header className="social-hub-heading"><span>The Wire</span><strong>Boss communications</strong></header>
@@ -179,7 +191,7 @@ export default function Home() {
     {helpOpen && <GameHelp onClose={() => setHelpOpen(false)} />}
     {historyOpen && <RoundHistory game={publicGame} onClose={() => setHistoryOpen(false)} />}
     {game.publicState.room.endMatchVote && <EndMatchVote state={game.publicState} playerId={game.session?.playerId ?? ""} busy={game.busy} vote={game.voteEndMatch} />}
-    {missionNotice && <div className="mission-progress-toast" role="status" aria-live="polite"><span>Mission advanced</span><b>{missionNotice}</b></div>}
+    {missionNotice && <div className="mission-progress-toast" role="status" aria-live="polite"><span>Secret orders updated</span><b>{missionNotice.text}</b></div>}
     {game.error && <button className="toast" onClick={game.clearError} role="alert">{game.error}<span>Dismiss</span></button>}
   </main>;
 }
@@ -233,14 +245,15 @@ function Negotiation({ game, state, playerId, busy, setReady }: { game: PublicGa
 
 function Draft({ game, privateState, busy, submit }: { game: PublicGame; privateState: PrivateState | null; busy: boolean; submit: (ids: string[]) => Promise<unknown> }) {
   const [selected, setSelected] = useState<string | null>(privateState?.draftPreferences[0] ?? null);
-  const [expanded, setExpanded] = useState<string | null>(null);
   const typeCounts = game.market.reduce<Partial<Record<CardType, number>>>((counts, card) => ({ ...counts, [card.type]: (counts[card.type] ?? 0) + 1 }), {});
+  const selectedCard = game.market.find((card) => card.id === selected);
   const choose = (id: string) => { setSelected(id); playCue("card-select"); };
   const lock = async () => { if (selected) { playCue("card-lock"); await submit([selected, ...game.market.map((card) => card.id).filter((cardId) => cardId !== selected)]); } };
   return <section className={`phase-card panel ${privateState?.draftPreferences.length ? "action-complete" : "action-required"}`}><span className="eyebrow">Blind draft</span><h2>Choose your leverage</h2><p>Your first choice is secret. Rotating priority decides collisions.</p>
-    <div className="card-market">{game.market.map((card) => { const copy = CARD_COPY[card.type]; return <motion.button whileHover={{ y: -7, rotate: -1.2 }} whileTap={{ scale: .97 }} key={card.id} className={`action-card ${selected === card.id ? "selected" : ""} ${expanded === card.id ? "expanded" : ""}`} disabled={busy} onClick={() => choose(card.id)} onDoubleClick={() => setExpanded(expanded === card.id ? null : card.id)} aria-pressed={selected === card.id}>
-      <span className="card-art" style={{ "--card-column": CARD_ART_INDEX[card.type] % 3, "--card-row": Math.floor(CARD_ART_INDEX[card.type] / 3) } as React.CSSProperties} /><span className="card-symbol">{copy.symbol}</span><b>{copy.name}</b>{(typeCounts[card.type] ?? 0) > 1 && <span className="market-copy">{typeCounts[card.type]} copies · unique card IDs</span>}<small>{copy.copy}</small>{expanded === card.id && <span className="card-exact"><b>Target</b> {CARD_GUIDE[card.type].target}<b>Expected benefit</b> {CARD_GUIDE[card.type].benefit}<b>Exact rule</b> {CARD_GUIDE[card.type].details}</span>}<span className="card-detail" onClick={(event) => { event.stopPropagation(); setExpanded(expanded === card.id ? null : card.id); }}>{expanded === card.id ? "Hide details" : "More details"}</span>{selected === card.id && <em>{privateState?.draftPreferences.length ? "Preference locked" : "Selected"}</em>}</motion.button>; })}</div>
-    <div className="draft-confirm"><button className="gold-button" disabled={busy || !selected || (privateState?.draftPreferences.length ?? 0) > 0} onClick={lock}>{privateState?.draftPreferences.length ? "Card locked" : "Lock in"}</button><p className="submission-note">{game.submissionCount} of {game.players.length} players ready</p></div>
+    <div className="card-market">{game.market.map((card) => { const guide = CARD_GUIDE[card.type]; return <motion.button whileHover={{ y: -5 }} whileTap={{ scale: .97 }} key={card.id} className={`action-card ${selected === card.id ? "selected" : ""}`} disabled={busy} onClick={() => choose(card.id)} aria-pressed={selected === card.id}>
+      <span className="card-art" style={{ "--card-column": CARD_ART_INDEX[card.type] % 3, "--card-row": Math.floor(CARD_ART_INDEX[card.type] / 3) } as React.CSSProperties} /><span className="card-symbol">{guide.symbol}</span><b>{guide.name}</b>{(typeCounts[card.type] ?? 0) > 1 && <span className="market-copy">{typeCounts[card.type]} copies · unique card IDs</span>}<small>{guide.summary}</small><span className="card-rules"><span><b>Effect</b>{guide.benefit}</span><span><b>Target</b>{guide.target}</span><span><b>Rule</b>{guide.details}</span></span>{selected === card.id && <em>{privateState?.draftPreferences.length ? "Preference locked" : "Selected"}</em>}</motion.button>; })}</div>
+    {selectedCard && <aside className="selected-card-brief" aria-live="polite"><span>Selected operation</span><h3>{CARD_GUIDE[selectedCard.type].name}<em>{CARD_GUIDE[selectedCard.type].benefit}</em></h3><p>{CARD_GUIDE[selectedCard.type].summary}</p><dl><div><dt>Valid target</dt><dd>{CARD_GUIDE[selectedCard.type].target}</dd></div><div><dt>Restriction</dt><dd>{CARD_GUIDE[selectedCard.type].details}</dd></div></dl><strong>Next: Lock in this preference. You will choose its target during Operations.</strong></aside>}
+    <div className="draft-confirm"><button className="gold-button" disabled={busy || !selected || (privateState?.draftPreferences.length ?? 0) > 0} onClick={lock}>{privateState?.draftPreferences.length ? "Card locked" : "Lock in selected card"}</button><p className="submission-note">{game.submissionCount} of {game.players.length} players ready</p></div>
   </section>;
 }
 
@@ -261,14 +274,15 @@ function Operation({ game, privateState, playerId, busy, submit, districtId, set
   const resolvedType = card.type;
   const needsRival = ["sabotage", "surveillance"].includes(resolvedType);
   const copy = CARD_COPY[resolvedType];
+  const guide = CARD_GUIDE[resolvedType];
   const effectiveTargetPlayerId = eligibleRivals.some((rival) => rival.id === targetPlayerId) ? targetPlayerId : eligibleRivals[0]?.id ?? "";
   const noSabotageTarget = resolvedType === "sabotage" && eligibleRivals.length === 0;
-  return <section className="phase-card panel operation-card"><span className="eyebrow">Hidden operation</span><div className="chosen-card"><span className="card-art-mini" style={{ "--card-column": CARD_ART_INDEX[resolvedType] % 3, "--card-row": Math.floor(CARD_ART_INDEX[resolvedType] / 3) } as React.CSSProperties}>{copy.symbol}</span><div><h2>{copy.name}</h2><p>{copy.copy}</p></div></div>
+  return <section className="phase-card panel operation-card"><span className="eyebrow">Hidden operation</span><div className="chosen-card"><span className="card-art-mini" style={{ "--card-column": CARD_ART_INDEX[resolvedType] % 3, "--card-row": Math.floor(CARD_ART_INDEX[resolvedType] / 3) } as React.CSSProperties}>{copy.symbol}</span><div><h2>{copy.name}</h2><p>{copy.copy}</p><span className="operation-effect"><b>Effect</b>{guide.benefit}</span><span className="operation-effect"><b>Valid target</b>{guide.target}</span></div></div><p className="operation-rule"><b>Rule:</b> {guide.details} Hidden rival moves resolve later, so control changes are not guaranteed.</p>
     {needsDistrict && <><div className="target-preview"><span>Target selected</span><b>{districtId ? DISTRICT_LABELS[districtId] : "Choose a district on the map"}</b></div><label className="control-label">Accessible target list<select value={districtId ?? ""} onChange={(event) => setDistrict(event.target.value as DistrictId)}>{game.activeDistricts.map((id) => <option key={id} value={id}>{DISTRICT_LABELS[id]}</option>)}</select></label></>}
     {needsRival && <label className="control-label">Target rival<select value={effectiveTargetPlayerId} disabled={noSabotageTarget} onChange={(event) => setTarget(event.target.value)}>{eligibleRivals.map((rival) => <option key={rival.id} value={rival.id}>{rival.nickname}{resolvedType === "sabotage" && districtId ? ` · ${game.districts[districtId]?.stakes[rival.id] ?? 0} stake` : ""}</option>)}{noSabotageTarget && <option value="">No rival stake in this district</option>}</select></label>}
     {noSabotageTarget && <p className="operation-warning" role="status">No rival has stake here. Choose another district, or deploy to take the automatic fallback: +1 Influence and no operation point.</p>}
     {resolvedType === "double-cross" && <label className="control-label">Agreement to betray<select value={dealId} onChange={(event) => setDeal(event.target.value)}><option value="">No deal — convert to Infiltrate</option>{deals.map((deal) => <option key={deal.id} value={deal.id}>{deal.type.replaceAll("-", " ")}</option>)}</select></label>}
-    <button className={`gold-button wide ${(!needsDistrict || districtId) && !privateState?.operation ? "deploy-ready" : ""}`} disabled={busy || deploying || (needsDistrict && !districtId)} onClick={async () => { setDeploying(true); playCue("deploy"); await new Promise((resolve) => setTimeout(resolve, 520)); await submit({ cardId: card.id, ...(needsDistrict ? { districtId } : {}), ...(needsRival && effectiveTargetPlayerId ? { targetPlayerId: effectiveTargetPlayerId } : {}), ...(resolvedType === "double-cross" && dealId ? { dealId } : {}) }); setDeploying(false); }}>{privateState?.operation ? "Update hidden move" : noSabotageTarget ? "Deploy fallback operation" : "Deploy operation"}</button>
+    <div className="operation-next"><span>Next required action</span><b>{privateState?.operation ? "Your move is hidden and locked. You may update it before the deadline." : needsDistrict && !districtId ? "Select a district on the city map." : needsRival && !effectiveTargetPlayerId && !noSabotageTarget ? "Choose a rival target." : "Confirm and deploy your hidden operation."}</b></div><button className={`gold-button wide ${(!needsDistrict || districtId) && !privateState?.operation ? "deploy-ready" : ""}`} disabled={busy || deploying || (needsDistrict && !districtId)} onClick={async () => { setDeploying(true); playCue("deploy"); await new Promise((resolve) => setTimeout(resolve, 520)); await submit({ cardId: card.id, ...(needsDistrict ? { districtId } : {}), ...(needsRival && effectiveTargetPlayerId ? { targetPlayerId: effectiveTargetPlayerId } : {}), ...(resolvedType === "double-cross" && dealId ? { dealId } : {}) }); setDeploying(false); }}>{privateState?.operation ? "Update hidden move" : noSabotageTarget ? "Confirm +1 Influence fallback" : "Confirm & deploy operation"}</button>
     <AnimatePresence>{deploying && <motion.div className="card-flight" initial={{ x: "0vw", y: "30vh", rotate: -12, scale: .65, opacity: 0 }} animate={{ x: "-5vw", y: "-24vh", rotate: 3, scale: 1, opacity: 1 }} exit={{ scale: 1.08, opacity: 0 }} transition={{ type: "spring", stiffness: 210, damping: 20 }}><span className="card-art-mini" style={{ "--card-column": CARD_ART_INDEX[resolvedType] % 3, "--card-row": Math.floor(CARD_ART_INDEX[resolvedType] / 3) } as React.CSSProperties} /></motion.div>}</AnimatePresence>
     {privateState?.operation && <p className="locked-note">✓ Your operation is locked in. The phase advances when every boss is ready or time expires.</p>}
   </section>;
@@ -314,9 +328,17 @@ function GameHelp({ onClose }: { onClose: () => void }) {
   return <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="How to play and score"><section className="game-help panel"><header><div><span className="eyebrow">Rules at a glance</span><h2>Take control of the city</h2></div><button onClick={onClose} aria-label="Close help">×</button></header><p>Make deals, play cards, and outsmart rival bosses. Earn the most points across five rounds to win.</p><div className="core-loop"><span><b>1</b> Make a deal<small>Optional</small></span><span><b>2</b> Choose a card<small>Secret</small></span><span><b>3</b> Pick a target<small>Deploy</small></span></div><h3>How to score</h3><div className="help-score">{SCORE_RULES.map(([source, points]) => <span key={source}>{source}<b>{points}</b></span>)}</div><p className="tiebreak-copy">{TIEBREAK_COPY}</p><h3>Action cards</h3><div className="help-cards">{Object.values(CARD_GUIDE).map((card) => <details key={card.symbol}><summary><b>{card.name}</b><span>{card.summary}</span></summary><p><strong>Target:</strong> {card.target}<br /><strong>Expected benefit:</strong> {card.benefit}<br />{card.details}</p></details>)}</div><div className="help-actions"><button className="outline-button" onClick={() => { onClose(); window.dispatchEvent(new Event("underworld:tutorial")); }}>Replay interactive training</button><button className="gold-button" onClick={onClose}>Back to the city</button></div></section></div>;
 }
 
-function Objectives({ privateState, game, playerId }: { privateState: PrivateState; game: PublicGame; playerId: string }) {
+function Objectives({ privateState, game, playerId, highlightedObjectiveId }: { privateState: PrivateState; game: PublicGame; playerId: string; highlightedObjectiveId?: string | undefined }) {
   const latestIntel = privateState.intelligence.at(-1);
-  return <section className="panel objective-panel"><header><span className="eyebrow">Eyes only · {privateState.objectives.filter((objective) => objective.completed).length}/3 complete</span><strong>Secret objectives</strong></header>{privateState.objectives.map((objective) => <details key={objective.id} className={`objective-item ${objective.completed ? "complete" : ""}`}><summary><span>{objective.tier === "primary" ? "Primary mission" : "Side objective"} · {objective.completed ? "Completed" : "In progress"}</span><b>{OBJECTIVE_NAMES[objective.id] ?? objective.id}</b><em>{objective.points} pts</em></summary><p>{objectiveExplanation(objective)}</p><div className="objective-progress"><i style={{ width: `${Math.min(100, objective.current / objective.target * 100)}%` }} /><span>{objective.current} of {objective.target} complete</span></div></details>)}
+  return <section className="panel objective-panel"><header><span className="eyebrow">Eyes only · {privateState.objectives.filter((objective) => objective.completed).length}/3 qualifying</span><strong>Secret Orders</strong></header>{privateState.objectives.map((objective) => <ObjectiveItem key={objective.id} objective={objective} highlighted={highlightedObjectiveId === objective.id} />)}
     {latestIntel && <div className="intel-slip"><span>Surveillance · round {latestIntel.round}</span><b>{CARD_COPY[latestIntel.cardType].name}</b><p>Strongest position: {latestIntel.strongestDistrictId ? DISTRICT_LABELS[latestIntel.strongestDistrictId] : "No stake detected"}{latestIntel.hasDealWithYou ? " · Deal connected to you" : ""}</p></div>}
   </section>;
+}
+
+function ObjectiveItem({ objective, highlighted }: { objective: PrivateState["objectives"][number]; highlighted: boolean }) {
+  const [open, setOpen] = useState(objective.tier === "primary" || highlighted);
+  useEffect(() => { if (highlighted) setOpen(true); }, [highlighted]);
+  const reversible = objective.kind !== "cumulative";
+  const status = objective.completed ? (reversible ? "Currently qualifying" : "Secured") : objective.kind === "conditional" ? "Conditions pending" : "In progress";
+  return <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className={`objective-item ${objective.completed ? "complete" : ""} ${highlighted ? "just-updated" : ""}`}><summary><span>{objective.tier === "primary" ? "Primary mission" : "Side objective"} · {status}</span><b>{OBJECTIVE_NAMES[objective.id] ?? objective.id}</b><em>{objective.points} pts</em></summary><p>{objectiveExplanation(objective)}</p><div className="objective-progress"><i style={{ width: `${Math.min(100, objective.current / Math.max(1, objective.target) * 100)}%` }} /><span>{objective.current} / {objective.target}</span></div>{objective.components.length > 0 && <div className="objective-components">{objective.components.map((part) => <span key={part.label} className={part.satisfied ? "satisfied" : ""}><i>{part.satisfied ? "✓" : "○"}</i><b>{part.label}</b><em>{part.current}/{part.target}</em></span>)}</div>}<small className="objective-finality">{reversible ? "Current qualifying progress. Checked again when final scoring begins." : "Cumulative progress cannot be lost once earned."}</small></details>;
 }

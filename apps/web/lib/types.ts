@@ -61,7 +61,13 @@ export interface PublicState {
 
 export interface PrivateState {
   playerId: PlayerId;
-  objectives: Array<Objective & { current: number; target: number; completed: boolean }>;
+  objectives: Array<Objective & {
+    current: number;
+    target: number;
+    completed: boolean;
+    kind: "cumulative" | "current" | "conditional";
+    components: Array<{ label: string; current: number; target: number; satisfied: boolean }>;
+  }>;
   draftedCard: CardInstance | null;
   operation: OperationChoice | null;
   draftPreferences: string[];

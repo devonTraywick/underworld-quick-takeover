@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CardType, Deal, DistrictId } from "@underworld/shared";
+import type { CardType, Deal, DistrictId, Objective } from "@underworld/shared";
 import {
   advanceAfterReveal,
   advanceToIntermission,
@@ -12,6 +12,7 @@ import {
   draftPriority,
   projectPrivate,
   projectPublic,
+  objectiveProgress,
   recomputeOwnership,
   resolveDraft,
   resolveOperations,
@@ -115,6 +116,88 @@ describe("district ownership", () => {
     district.stakes.p2 = 3;
     recomputeOwnership(state);
     expect(district.ownerId).toBe("p1");
+  });
+});
+
+describe("objective progress", () => {
+  const definitions: Array<{ objective: Objective; kind: "cumulative" | "current" | "conditional" }> = [
+    { objective: { id: "city-crown", family: "control", tier: "primary", points: 10 }, kind: "current" },
+    { objective: { id: "kingmaker", family: "downtown", tier: "primary", points: 10 }, kind: "current" },
+    { objective: { id: "deep-roots", family: "stake-spread", tier: "primary", points: 10 }, kind: "current" },
+    { objective: { id: "untouchable", family: "influence", tier: "primary", points: 10 }, kind: "current" },
+    { objective: { id: "mastermind", family: "operations", tier: "primary", points: 10 }, kind: "cumulative" },
+    { objective: { id: "shadow-broker", family: "diplomacy", tier: "primary", points: 10 }, kind: "conditional" },
+    { objective: { id: "district-boss", family: "named-district", tier: "side", points: 4, districtId: "downtown" }, kind: "current" },
+    { objective: { id: "cash-reserve", family: "influence", tier: "side", points: 4 }, kind: "current" },
+    { objective: { id: "citywide-network", family: "stake-spread", tier: "side", points: 4 }, kind: "current" },
+    { objective: { id: "wrecking-crew", family: "sabotage", tier: "side", points: 4 }, kind: "cumulative" },
+    { objective: { id: "honorable-word", family: "diplomacy", tier: "side", points: 4 }, kind: "cumulative" },
+    { objective: { id: "reliable-operator", family: "operations", tier: "side", points: 4 }, kind: "cumulative" },
+    { objective: { id: "strongholds", family: "strongholds", tier: "side", points: 4 }, kind: "current" },
+    { objective: { id: "knife-in-the-dark", family: "betrayal", tier: "side", points: 4 }, kind: "conditional" },
+  ];
+
+  it("represents every objective with accurate live semantics and a completable state", () => {
+    for (const { objective, kind } of definitions) {
+      const state = createGame(`objective-${objective.id}`, players(2), `objective-${objective.id}`);
+      const player = state.players.p1!;
+      const own = (id: DistrictId, stake = 5) => { state.districts[id].stakes.p1 = stake; state.districts[id].ownerId = "p1"; };
+      switch (objective.id) {
+        case "city-crown": own(state.activeDistricts[0]!); own(state.activeDistricts[1]!); break;
+        case "kingmaker": own("downtown"); own(state.activeDistricts.find((id) => id !== "downtown")!); break;
+        case "deep-roots": own(state.activeDistricts[0]!, 4); own(state.activeDistricts[1]!, 4); break;
+        case "untouchable": player.influence = 7; own(state.activeDistricts[0]!); break;
+        case "mastermind": player.successfulOperationRounds = [1, 2, 3, 4, 5]; break;
+        case "shadow-broker": player.surveillanceEvents = 2; player.honoredDealEvents = 1; own(state.activeDistricts[0]!); break;
+        case "district-boss": own("downtown"); break;
+        case "cash-reserve": player.influence = 4; break;
+        case "citywide-network": state.activeDistricts.forEach((id) => { state.districts[id].stakes.p1 = 1; }); break;
+        case "wrecking-crew": player.successfulSabotageRounds = [1, 2]; break;
+        case "honorable-word": player.honoredDealEvents = 2; break;
+        case "reliable-operator": player.successfulOperationRounds = [1, 2, 3, 4]; break;
+        case "strongholds": own(state.activeDistricts[0]!, 3); own(state.activeDistricts[1]!, 3); break;
+        case "knife-in-the-dark": player.betrayedDeals = 1; player.influence = 2; break;
+      }
+      const progress = objectiveProgress(state, player, objective);
+      expect(progress.kind, objective.id).toBe(kind);
+      expect(progress.completed, objective.id).toBe(true);
+      expect(progress.current, objective.id).toBeGreaterThanOrEqual(progress.target);
+      const dummyPrimary: Objective = { id: "mastermind", family: "operations", tier: "primary", points: 10 };
+      const dummySide: Objective = { id: "district-boss", family: "named-district", tier: "side", points: 4, districtId: "neon-strip" };
+      player.objectives = objective.tier === "primary" ? [objective, dummySide, dummySide] : [dummyPrimary, objective, dummySide];
+      state.phase = "finale";
+      const standing = scoreGame(state).standings.find((entry) => entry.playerId === player.id)!;
+      expect(objective.tier === "primary" ? standing.primary : standing.sides, `${objective.id} finale award`).toBe(objective.points);
+    }
+  });
+
+  it("includes every Shadow Broker condition and marks reversible conditions explicitly", () => {
+    const state = createGame("shadow-progress", players(2), "shadow-progress");
+    const player = state.players.p1!;
+    player.surveillanceEvents = 3;
+    const objective: Objective = { id: "shadow-broker", family: "diplomacy", tier: "primary", points: 10 };
+    const withoutDistrict = objectiveProgress(state, player, objective);
+    expect(withoutDistrict).toMatchObject({ current: 3, target: 4, completed: false, kind: "conditional" });
+    expect(withoutDistrict.components).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Intel or honored deals", satisfied: true }),
+      expect.objectContaining({ label: "Control a district", satisfied: false }),
+    ]));
+    state.districts[state.activeDistricts[0]!].ownerId = "p1";
+    expect(objectiveProgress(state, player, objective)).toMatchObject({ current: 4, target: 4, completed: true });
+  });
+
+  it("does not permanently secure reversible current-state progress", () => {
+    const state = createGame("reversible-progress", players(2), "reversible-progress");
+    const player = state.players.p1!;
+    player.influence = 4;
+    const cash: Objective = { id: "cash-reserve", family: "influence", tier: "side", points: 4 };
+    expect(objectiveProgress(state, player, cash)).toMatchObject({ completed: true, kind: "current" });
+    player.influence = 1;
+    expect(objectiveProgress(state, player, cash)).toMatchObject({ completed: false, current: 1, kind: "current" });
+
+    player.successfulOperationRounds = [1, 2, 3, 4];
+    const reliable: Objective = { id: "reliable-operator", family: "operations", tier: "side", points: 4 };
+    expect(objectiveProgress(state, player, reliable)).toMatchObject({ completed: true, kind: "cumulative" });
   });
 });
 

@@ -236,6 +236,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(host.getByRole("heading", { name: "Make your promises" })).toBeVisible();
   await expect(host.locator(".phase-announcement")).toContainText(/Back-room negotiations/i);
   await expect(guest.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");
+  await expect(guest.locator(".secret-orders-indicator")).toContainText("Secret Orders");
   await expect(host.locator(".game-page")).toHaveClass(/phase-negotiation/);
   await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION — Make a deal");
   await host.screenshot({ path: "test-results/phase-negotiation-desktop.png", fullPage: false });
@@ -334,17 +335,18 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await guest.getByRole("button", { name: "The Wire" }).click();
   await expect(guest.getByRole("complementary", { name: "Social hub" })).toBeVisible();
   await guest.getByRole("button", { name: "Close social hub" }).click();
-  await host.locator(".action-card").first().getByText("More details").click();
+  await expect(host.locator(".action-card .card-rules")).toHaveCount(await host.locator(".action-card").count());
+  await expect(host.locator(".action-card").first()).toContainText("Effect");
   await expect(host.locator(".action-card").first()).toContainText("Target");
-  await expect(host.locator(".action-card").first()).toContainText("Expected benefit");
   await host.screenshot({ path: "test-results/phase-draft-desktop.png", fullPage: false });
   await guest.screenshot({ path: "test-results/phase-draft-mobile.png", fullPage: false });
 
   await host.locator(".action-card").first().click();
   await guest.locator(".action-card").first().click();
-  await Promise.all([host.getByRole("button", { name: "Lock in" }).click(), guest.getByRole("button", { name: "Lock in" }).click()]);
-  await expect(host.getByRole("button", { name: "Deploy operation" })).toBeVisible();
-  await expect(guest.getByRole("button", { name: "Deploy operation" })).toBeVisible();
+  await expect(host.locator(".selected-card-brief")).toContainText("Valid target");
+  await Promise.all([host.getByRole("button", { name: "Lock in selected card" }).click(), guest.getByRole("button", { name: "Lock in selected card" }).click()]);
+  await expect(host.getByRole("button", { name: /deploy operation/i })).toBeVisible();
+  await expect(guest.getByRole("button", { name: /deploy operation/i })).toBeVisible();
   await expect(host.locator(".game-page")).toHaveClass(/phase-operations/);
   await waitForPhaseReady(host); await waitForPhaseReady(guest);
   await host.locator(".district").first().click();
@@ -353,8 +355,8 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await guest.screenshot({ path: "test-results/phase-operations-mobile.png", fullPage: false });
 
   await Promise.all([
-    host.getByRole("button", { name: "Deploy operation" }).click(),
-    guest.getByRole("button", { name: "Deploy operation" }).click(),
+    host.getByRole("button", { name: /deploy operation|fallback/i }).click(),
+    guest.getByRole("button", { name: /deploy operation|fallback/i }).click(),
   ]);
   await expect(host.locator(".game-page")).toHaveClass(/phase-cinematic-reveal/);
   await waitForPhaseReady(host); await waitForPhaseReady(guest);
@@ -381,11 +383,11 @@ test("two isolated browser contexts play a contested simultaneous round and reco
     await expect(host.locator(".phase-guide")).toContainText("DRAFT");
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await host.locator(".action-card").first().click(); await guest.locator(".action-card").first().click();
-    await Promise.all([host.getByRole("button", { name: "Lock in" }).click(), guest.getByRole("button", { name: "Lock in" }).click()]);
+    await Promise.all([host.getByRole("button", { name: "Lock in selected card" }).click(), guest.getByRole("button", { name: "Lock in selected card" }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("OPERATIONS");
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await host.locator(".district").first().click(); await guest.locator(".district").first().click();
-    await Promise.all([host.getByRole("button", { name: "Deploy operation" }).click(), guest.getByRole("button", { name: "Deploy operation" }).click()]);
+    await Promise.all([host.getByRole("button", { name: /deploy operation|fallback/i }).click(), guest.getByRole("button", { name: /deploy operation|fallback/i }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("REVEAL");
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await host.getByRole("button", { name: "Skip Animation" }).click();

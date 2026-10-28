@@ -26,7 +26,7 @@ const CENTERS: Record<DistrictId, [number, number]> = {
 
 const FACTIONS = ["#C5A46A", "#9B4055", "#4E9299", "#725CA8", "#C56E45", "#6C8B58", "#D0C7B5", "#5174A4"];
 
-export function CityMap({ game, selected, effect, currentPlayerId, operationName, onSelect }: { game: PublicGame; selected?: DistrictId | undefined; effect?: PublicGame["cinematicEvents"][number] | null; currentPlayerId?: PlayerId | undefined; operationName?: string | undefined; onSelect?: ((id: DistrictId) => void) | undefined }) {
+export function CityMap({ game, selected, effect, currentPlayerId, operationName, eligibleDistricts, onSelect }: { game: PublicGame; selected?: DistrictId | undefined; effect?: PublicGame["cinematicEvents"][number] | null; currentPlayerId?: PlayerId | undefined; operationName?: string | undefined; eligibleDistricts?: DistrictId[] | undefined; onSelect?: ((id: DistrictId) => void) | undefined }) {
   const playerById = new Map(game.players.map((player) => [player.id, player]));
   const [focused, setFocused] = useState<DistrictId>(selected ?? game.activeDistricts[0]!);
   useEffect(() => { if (selected) setFocused(selected); else if (!game.activeDistricts.includes(focused)) setFocused(game.activeDistricts[0]!); }, [focused, game.activeDistricts, selected]);
@@ -45,8 +45,8 @@ export function CityMap({ game, selected, effect, currentPlayerId, operationName
           const stakes = Object.entries(district.stakes).filter(([, value]) => value > 0)
             .sort((a, b) => b[1] - a[1]);
           return (
-            <g key={id} className={`district ${focused === id ? "is-focused" : ""} ${selected === id ? "is-selected" : ""} ${effect?.districtId === id ? `district-effect effect-${effect.type}` : ""}`} role="button" tabIndex={0}
-              aria-label={`${LABELS[id]}, ${owner ? `controlled by ${owner.nickname}` : "neutral"}`}
+            <g key={id} className={`district ${focused === id ? "is-focused" : ""} ${selected === id ? "is-selected" : ""} ${eligibleDistricts ? (eligibleDistricts.includes(id) ? "is-eligible" : "is-ineligible") : ""} ${effect?.districtId === id ? `district-effect effect-${effect.type}` : ""}`} role="button" tabIndex={0}
+              aria-label={`${LABELS[id]}, ${owner ? `controlled by ${owner.nickname}` : "neutral"}${eligibleDistricts ? (eligibleDistricts.includes(id) ? ", valid target" : ", fallback target") : ""}`}
               onClick={() => { setFocused(id); onSelect?.(id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { setFocused(id); onSelect?.(id); } }}>
               <polygon points={SHAPES[id]} style={{ "--owner": owner ? FACTIONS[owner.seat % FACTIONS.length] : "#34363d" } as React.CSSProperties} />
               <text x={x} y={y - 8} textAnchor="middle" className="district-name">{LABELS[id]}</text>
@@ -65,7 +65,7 @@ export function CityMap({ game, selected, effect, currentPlayerId, operationName
         })}
       </svg>
       {effect?.districtId && ["district-captured", "district-contested"].includes(effect.type) && <div className={`capture-headline effect-${effect.type}`} role="status"><b>{LABELS[effect.districtId]}</b><span>{effect.type === "district-captured" ? `Captured by ${game.players.find((player) => player.id === effect.ownerId)?.nickname ?? "a rival"}` : "Now contested"}</span></div>}
-      <aside className="district-inspector" aria-live="polite"><div><span>District intelligence</span><strong>{LABELS[focused]}</strong></div><dl><div><dt>Control</dt><dd>{inspectedOwner?.nickname ?? "Contested / neutral"}</dd></div><div><dt>Total stakes</dt><dd>{totalStake}</dd></div><div><dt>Your stake</dt><dd>{currentPlayerId ? inspected.stakes[currentPlayerId] ?? 0 : 0}</dd></div></dl><div className="district-rivals">{Object.entries(inspected.stakes).filter(([, stake]) => stake > 0).sort((a, b) => b[1] - a[1]).map(([id, stake]) => <span key={id}><i style={{ background: FACTIONS[(playerById.get(id)?.seat ?? 0) % FACTIONS.length] }} />{playerById.get(id)?.nickname}<b>{stake}</b></span>)}</div>{operationName && <p><b>{operationName}</b> can target this district. Select it, then deploy.</p>}</aside>
+      <aside className="district-inspector" aria-live="polite"><div><span>District intelligence</span><strong>{LABELS[focused]}</strong></div><dl><div><dt>Control</dt><dd>{inspectedOwner?.nickname ?? "Contested / neutral"}</dd></div><div><dt>Total stakes</dt><dd>{totalStake}</dd></div><div><dt>Your stake</dt><dd>{currentPlayerId ? inspected.stakes[currentPlayerId] ?? 0 : 0}</dd></div></dl><div className="district-rivals">{Object.entries(inspected.stakes).filter(([, stake]) => stake > 0).sort((a, b) => b[1] - a[1]).map(([id, stake]) => <span key={id}><i style={{ background: FACTIONS[(playerById.get(id)?.seat ?? 0) % FACTIONS.length] }} />{playerById.get(id)?.nickname}<b>{stake}</b></span>)}</div>{operationName && <p><b>{operationName}</b> · {eligibleDistricts?.includes(focused) === false ? "No qualifying rival stake here; fallback rules apply." : "Valid target. Select it, then deploy."}</p>}</aside>
       <div className="map-legend">
         {game.players.map((player) => <span key={player.id}><i style={{ background: FACTIONS[player.seat % FACTIONS.length] }} />{player.nickname}</span>)}
       </div>

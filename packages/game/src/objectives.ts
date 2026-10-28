@@ -97,24 +97,67 @@ export function isObjectiveComplete(state: GameState, player: PlayerState, objec
   }
 }
 
-export function objectiveProgress(state: GameState, player: PlayerState, objective: Objective): { current: number; target: number; completed: boolean } {
+export type ObjectiveProgressKind = "cumulative" | "current" | "conditional";
+
+export interface ObjectiveProgressComponent {
+  label: string;
+  current: number;
+  target: number;
+  satisfied: boolean;
+}
+
+export interface ObjectiveProgress {
+  current: number;
+  target: number;
+  completed: boolean;
+  kind: ObjectiveProgressKind;
+  components: ObjectiveProgressComponent[];
+}
+
+export function objectiveProgress(state: GameState, player: PlayerState, objective: Objective): ObjectiveProgress {
   const owned = controls(state, player.id);
   let current = 0; let target = 1;
+  let kind: ObjectiveProgressKind = "current";
+  let components: ObjectiveProgressComponent[] = [];
   switch (objective.id) {
     case "city-crown": current = owned.length; target = Math.ceil(state.activeDistricts.length / 2); break;
-    case "kingmaker": current = Number(owned.includes("downtown")) + Number(owned.some((id) => id !== "downtown")); target = 2; break;
+    case "kingmaker":
+      components = [
+        { label: "Control Downtown", current: Number(owned.includes("downtown")), target: 1, satisfied: owned.includes("downtown") },
+        { label: "Control another district", current: Number(owned.some((id) => id !== "downtown")), target: 1, satisfied: owned.some((id) => id !== "downtown") },
+      ];
+      current = components.filter((part) => part.satisfied).length; target = 2; break;
     case "deep-roots": current = state.activeDistricts.filter((id) => stakeAt(state, id, player.id) >= 4).length; target = state.activeDistricts.length === 3 ? 2 : 3; break;
-    case "untouchable": current = Number(player.influence >= 7) + Number(owned.length >= 1); target = 2; break;
-    case "mastermind": current = new Set(player.successfulOperationRounds).size; target = 5; break;
-    case "shadow-broker": current = player.surveillanceEvents + player.honoredDealEvents; target = 3; break;
+    case "untouchable":
+      components = [
+        { label: "Hold 7 Influence", current: Math.min(player.influence, 7), target: 7, satisfied: player.influence >= 7 },
+        { label: "Control a district", current: Math.min(owned.length, 1), target: 1, satisfied: owned.length >= 1 },
+      ];
+      current = components.filter((part) => part.satisfied).length; target = 2; break;
+    case "mastermind": kind = "cumulative"; current = new Set(player.successfulOperationRounds).size; target = 5; break;
+    case "shadow-broker": {
+      kind = "conditional";
+      const contacts = player.surveillanceEvents + player.honoredDealEvents;
+      components = [
+        { label: "Intel or honored deals", current: Math.min(contacts, 3), target: 3, satisfied: contacts >= 3 },
+        { label: "Control a district", current: Math.min(owned.length, 1), target: 1, satisfied: owned.length >= 1 },
+      ];
+      current = components.reduce((sum, part) => sum + part.current, 0); target = 4; break;
+    }
     case "district-boss": current = Number(objective.districtId !== undefined && owned.includes(objective.districtId)); break;
     case "cash-reserve": current = player.influence; target = 4; break;
     case "citywide-network": current = state.activeDistricts.filter((id) => stakeAt(state, id, player.id) > 0).length; target = state.activeDistricts.length === 7 ? 5 : state.activeDistricts.length; break;
-    case "wrecking-crew": current = new Set(player.successfulSabotageRounds).size; target = 2; break;
-    case "honorable-word": current = player.honoredDealEvents; target = 2; break;
-    case "reliable-operator": current = new Set(player.successfulOperationRounds).size; target = 4; break;
+    case "wrecking-crew": kind = "cumulative"; current = new Set(player.successfulSabotageRounds).size; target = 2; break;
+    case "honorable-word": kind = "cumulative"; current = player.honoredDealEvents; target = 2; break;
+    case "reliable-operator": kind = "cumulative"; current = new Set(player.successfulOperationRounds).size; target = 4; break;
     case "strongholds": current = state.activeDistricts.filter((id) => stakeAt(state, id, player.id) >= 3).length; target = 2; break;
-    case "knife-in-the-dark": current = Number(player.betrayedDeals >= 1) + Number(player.influence >= 2); target = 2; break;
+    case "knife-in-the-dark":
+      kind = "conditional";
+      components = [
+        { label: "Break an agreement", current: Math.min(player.betrayedDeals, 1), target: 1, satisfied: player.betrayedDeals >= 1 },
+        { label: "Finish with 2 Influence", current: Math.min(player.influence, 2), target: 2, satisfied: player.influence >= 2 },
+      ];
+      current = components.filter((part) => part.satisfied).length; target = 2; break;
   }
-  return { current, target, completed: isObjectiveComplete(state, player, objective) };
+  return { current, target, completed: isObjectiveComplete(state, player, objective), kind, components };
 }
