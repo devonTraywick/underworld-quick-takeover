@@ -110,6 +110,24 @@ test("release layouts avoid console failures, shifts, overflow, and undersized p
   }
 });
 
+test("desktop lobby expands setup controls without requiring page scrolling", async ({ browser }) => {
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 1600, height: 900 }]) {
+    const context = await browser.newContext({ viewport });
+    const { page } = await createRoom(context, `Layout Family ${viewport.width}`);
+    await expect(page.getByRole("button", { name: /Quick Match/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Guided Match/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Replay tutorial" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Waiting for rivals" })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
+    const roster = await page.locator(".lobby-roster").boundingBox();
+    const controls = await page.locator(".lobby-controls").boundingBox();
+    const table = await page.locator(".lobby-table").boundingBox();
+    expect(controls!.x).toBeGreaterThan(roster!.x + roster!.width);
+    expect(table!.width).toBeGreaterThan(viewport.width * .8);
+    await context.close();
+  }
+});
+
 test("invite copy confirms only after success, resets, and offers a failure fallback", async ({ context }) => {
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => undefined } });
