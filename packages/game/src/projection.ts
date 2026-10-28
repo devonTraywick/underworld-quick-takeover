@@ -1,6 +1,6 @@
 import type { PlayerId } from "@underworld/shared";
-import type { GameState } from "./types.js";
-import { objectiveProgress } from "./objectives.js";
+import type { GameState } from "./types";
+import { objectiveProgress } from "./objectives";
 
 export interface PublicProjection {
   matchId: string;

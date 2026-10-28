@@ -1,7 +1,7 @@
 import { CARD_TYPES, DISTRICTS, type CardInstance, type DistrictId } from "@underworld/shared";
-import { assignObjectives } from "./objectives.js";
-import { createRandom } from "./random.js";
-import type { GameState, PlayerInput } from "./types.js";
+import { assignObjectives } from "./objectives";
+import { createRandom } from "./random";
+import type { GameState, PlayerInput } from "./types";
 
 const SUPPLY = [
   "infiltrate", "infiltrate", "fortify", "fortify", "sabotage",

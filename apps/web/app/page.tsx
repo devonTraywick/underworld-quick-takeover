@@ -136,7 +136,7 @@ export default function Home() {
   const needsMapTarget = publicGame.phase === "operations" && ["infiltrate", "fortify", "sabotage", "double-cross"].includes(game.privateState?.draftedCard?.type ?? "");
   const selectedDistrict = publicGame.phase === "operations" ? (needsMapTarget ? operationDistrict : undefined) : revealEffect?.districtId;
   return <main className={`game-page phase-${publicGame.phase}`}>
-    <Onboarding />
+    <Onboarding allowOffer={false} />
     <PhaseAnnouncement state={game.publicState} />
     <AttentionAudio state={game.publicState} privateState={game.privateState} countdown={countdown} />
     {publicGame.phase === "mission-briefing" && game.privateState && <MissionBriefing state={game.publicState} privateState={game.privateState} playerId={playerId} busy={game.busy} acknowledge={game.acknowledgeMissions} />}
@@ -188,7 +188,7 @@ function Lobby({ state, playerId, busy, error, onStart, onLeave, onPacing }: { s
   const isHost = state.room.hostPlayerId === playerId;
   const joinUrl = typeof window === "undefined" ? "" : window.location.href;
   return <main className="lobby-page">
-    <Onboarding />
+    <Onboarding allowOffer={false} />
     <header className="lobby-brand"><div className="brand-seal"><span>U·Q</span></div><div><p className="eyebrow">Private table</p><h1>Gather the families</h1></div></header>
     <section className="room-code-card"><span>Room code</span><strong>{state.room.code}</strong><div className="room-copy-actions"><CopyButton value={joinUrl} label="Copy invite link" /><CopyButton value={state.room.code} label="Copy room code" /></div><AudioControls compact /></section>
     <section className="lobby-table panel"><header><div><span className="eyebrow">The guest list</span><h2>{state.room.players.length} of 8 syndicates</h2></div><span className="live-pill">Room open</span></header>
@@ -311,7 +311,7 @@ function Finale({ state, playerId, busy, vote, leave }: { state: PublicState; pl
 }
 
 function GameHelp({ onClose }: { onClose: () => void }) {
-  return <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="How to play and score"><section className="game-help panel"><header><div><span className="eyebrow">Rules at a glance</span><h2>Take control of the city</h2></div><button onClick={onClose} aria-label="Close help">×</button></header><p>Make deals, play cards, and outsmart rival bosses. Earn the most points across five rounds to win.</p><div className="core-loop"><span><b>1</b> Make a deal<small>Optional</small></span><span><b>2</b> Choose a card<small>Secret</small></span><span><b>3</b> Pick a target<small>Deploy</small></span></div><h3>How to score</h3><div className="help-score">{SCORE_RULES.map(([source, points]) => <span key={source}>{source}<b>{points}</b></span>)}</div><p className="tiebreak-copy">{TIEBREAK_COPY}</p><h3>Action cards</h3><div className="help-cards">{Object.values(CARD_GUIDE).map((card) => <details key={card.symbol}><summary><b>{card.name}</b><span>{card.summary}</span></summary><p><strong>Target:</strong> {card.target}<br /><strong>Expected benefit:</strong> {card.benefit}<br />{card.details}</p></details>)}</div><button className="gold-button wide" onClick={onClose}>Back to the city</button></section></div>;
+  return <div className="match-menu-backdrop" role="dialog" aria-modal="true" aria-label="How to play and score"><section className="game-help panel"><header><div><span className="eyebrow">Rules at a glance</span><h2>Take control of the city</h2></div><button onClick={onClose} aria-label="Close help">×</button></header><p>Make deals, play cards, and outsmart rival bosses. Earn the most points across five rounds to win.</p><div className="core-loop"><span><b>1</b> Make a deal<small>Optional</small></span><span><b>2</b> Choose a card<small>Secret</small></span><span><b>3</b> Pick a target<small>Deploy</small></span></div><h3>How to score</h3><div className="help-score">{SCORE_RULES.map(([source, points]) => <span key={source}>{source}<b>{points}</b></span>)}</div><p className="tiebreak-copy">{TIEBREAK_COPY}</p><h3>Action cards</h3><div className="help-cards">{Object.values(CARD_GUIDE).map((card) => <details key={card.symbol}><summary><b>{card.name}</b><span>{card.summary}</span></summary><p><strong>Target:</strong> {card.target}<br /><strong>Expected benefit:</strong> {card.benefit}<br />{card.details}</p></details>)}</div><div className="help-actions"><button className="outline-button" onClick={() => { onClose(); window.dispatchEvent(new Event("underworld:tutorial")); }}>Replay interactive training</button><button className="gold-button" onClick={onClose}>Back to the city</button></div></section></div>;
 }
 
 function Objectives({ privateState, game, playerId }: { privateState: PrivateState; game: PublicGame; playerId: string }) {

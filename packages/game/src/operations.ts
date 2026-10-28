@@ -1,8 +1,8 @@
 import type { Deal, DistrictId, OperationChoice, PlayerId } from "@underworld/shared";
-import { evaluateDeals } from "./deals.js";
-import { addStake, recomputeOwnership } from "./ownership.js";
-import { createRandom } from "./random.js";
-import type { GameState, IntelligenceReport } from "./types.js";
+import { evaluateDeals } from "./deals";
+import { addStake, recomputeOwnership } from "./ownership";
+import { createRandom } from "./random";
+import type { GameState, IntelligenceReport } from "./types";
 
 export function submitOperation(state: GameState, playerId: PlayerId, choice: OperationChoice): GameState {
   if (state.phase !== "operations") throw new Error("Operations are only accepted during operations phase");

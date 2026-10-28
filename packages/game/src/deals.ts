@@ -1,5 +1,5 @@
 import type { Deal, PlayerId } from "@underworld/shared";
-import type { GameState } from "./types.js";
+import type { GameState } from "./types";
 
 function cardType(state: GameState, playerId: PlayerId) {
   return state.players[playerId]?.draftedCard?.type;

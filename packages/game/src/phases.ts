@@ -1,5 +1,5 @@
-import { createMarket } from "./setup.js";
-import type { GameState } from "./types.js";
+import { createMarket } from "./setup";
+import type { GameState } from "./types";
 
 export function beginDraft(state: GameState): GameState {
   if (state.phase !== "negotiation") throw new Error("Draft follows negotiation");

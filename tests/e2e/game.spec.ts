@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 async function dismissOnboarding(page: Page): Promise<void> {
-  const dialog = page.getByRole("dialog", { name: "Learn the takeover" });
+  const dialog = page.getByRole("dialog", { name: "Play the training takeover" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Skip tutorial" }).click();
   await expect(dialog).toBeHidden();
@@ -47,28 +47,51 @@ async function joinRoom(context: BrowserContext, roomCode: string, nickname: str
   return page;
 }
 
-test("the guided introduction is complete and skippable", async ({ page }) => {
+test("the interactive training match validates actions, resolves the engine, and persists completion", async ({ page }) => {
   await page.goto("/");
-  const offer = page.getByRole("dialog", { name: "Learn the takeover" });
-  await expect(offer).toContainText("without touching a live match");
-  await offer.getByRole("button", { name: "Start tutorial" }).click();
-  const dialog = page.locator(".tutorial-card");
-  await expect(dialog).toContainText("Family briefing · 1/10");
+  const offer = page.getByRole("dialog", { name: "Play the training takeover" });
+  await expect(offer).toContainText("real city, cards, missions, deals, and resolution rules");
+  await offer.getByRole("button", { name: "Start training" }).click();
+  await expect(page.getByRole("dialog", { name: "Inspect your mission" })).toBeVisible();
   await page.screenshot({ path: "test-results/tutorial-desktop.png", fullPage: false });
+  await page.getByRole("button", { name: /Primary mission · 10 pts Kingmaker/ }).click();
+  await expect(page.getByRole("dialog", { name: "Open a private line" })).toBeVisible();
+  await page.getByRole("button", { name: /Rival boss Silas Marlowe/ }).click();
+  await expect(page.getByRole("dialog", { name: "Respond to the deal" })).toBeVisible();
+  await page.getByRole("button", { name: "Reject" }).click();
+  await expect(page.getByText("Rejected deals are valid")).toBeVisible();
+  await page.getByRole("button", { name: "Accept proposal" }).click();
+  await expect(page.getByRole("dialog", { name: "Choose Infiltrate" })).toBeVisible();
+  await page.locator(".training-card-market button").filter({ hasText: "Fortify" }).click();
+  await expect(page.getByText("Fortify is legal")).toBeVisible();
+  await page.locator(".training-card-market button").filter({ hasText: "Infiltrate" }).click();
+  await page.getByRole("button", { name: "Lock in Infiltrate" }).click();
+  await expect(page.getByRole("dialog", { name: "Take Downtown" })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "test-results/tutorial-mobile.png", fullPage: false });
-  await dialog.getByRole("button", { name: "Next" }).click();
-  await expect(page.getByRole("dialog", { name: "Build your power" })).toContainText("2/10");
-  await page.getByRole("button", { name: "Try it · Add 2 stakes" }).click();
-  await expect(page.getByText("Done — the city reacts")).toBeVisible();
-  await page.getByRole("button", { name: "Back" }).click();
-  await expect(page.getByRole("dialog", { name: "Take control of the city" })).toBeVisible();
-  await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("dialog", { name: "Build your power" })).toBeVisible();
-  await page.getByRole("button", { name: "Skip" }).click();
+  const wrongDistrict = page.locator('.district:not([aria-label^="Downtown"])').first();
+  await wrongDistrict.click();
+  await expect(page.getByText(/is valid in a real match/)).toBeVisible();
+  await page.locator('.district[aria-label^="Downtown"]').click();
+  await page.getByRole("button", { name: "Deploy operation" }).click();
+  await expect(page.getByRole("dialog", { name: "Watch the city change" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "YOU'RE READY TO TAKE THE CITY." })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Downtown is yours")).toBeVisible();
+  await page.getByRole("button", { name: "Enter the city" }).click();
   await expect(page.getByRole("region", { name: "Enter a game room" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("underworld.tutorial.version"))).toBe("4");
   await page.reload();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("training can restart and skip without entering a multiplayer room", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Start training" }).click();
+  await page.getByRole("button", { name: /Primary mission · 10 pts Kingmaker/ }).click();
+  await page.getByRole("button", { name: "Restart" }).click();
+  await expect(page.getByRole("dialog", { name: "Inspect your mission" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip" }).click();
+  await expect(page.getByRole("region", { name: "Enter a game room" })).toBeVisible();
 });
 
 test("sound requires explicit activation and exposes honest controls", async ({ page }) => {

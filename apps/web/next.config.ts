@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@underworld/shared"],
+  transpilePackages: ["@underworld/shared", "@underworld/game"],
   output: "standalone",
 };
 

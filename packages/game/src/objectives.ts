@@ -1,6 +1,6 @@
 import type { DistrictId, Objective, PlayerId } from "@underworld/shared";
-import type { GameState, PlayerState } from "./types.js";
-import type { RandomSource } from "./random.js";
+import type { GameState, PlayerState } from "./types";
+import type { RandomSource } from "./random";
 
 const PRIMARY = [
   ["city-crown", "control"],

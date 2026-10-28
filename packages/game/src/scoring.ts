@@ -1,6 +1,6 @@
 import type { PlayerId } from "@underworld/shared";
-import { isObjectiveComplete } from "./objectives.js";
-import type { FinalScore, GameState, ScoreBreakdown } from "./types.js";
+import { isObjectiveComplete } from "./objectives";
+import type { FinalScore, GameState, ScoreBreakdown } from "./types";
 
 function compare(a: ScoreBreakdown, b: ScoreBreakdown): number {
   return b.total - a.total

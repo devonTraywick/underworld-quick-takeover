@@ -1,6 +1,6 @@
 import type { PlayerId } from "@underworld/shared";
-import { createRandom } from "./random.js";
-import type { GameState } from "./types.js";
+import { createRandom } from "./random";
+import type { GameState } from "./types";
 
 export function draftPriority(state: GameState): PlayerId[] {
   const offset = (state.round - 1) % state.seatOrder.length;

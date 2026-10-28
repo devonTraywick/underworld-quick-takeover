@@ -1,5 +1,5 @@
 import type { PlayerId } from "@underworld/shared";
-import type { GameState } from "./types.js";
+import type { GameState } from "./types";
 
 export function recomputeOwnership(state: GameState): void {
   for (const districtId of state.activeDistricts) {
