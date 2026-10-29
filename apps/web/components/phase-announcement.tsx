@@ -28,7 +28,8 @@ export function PhaseAnnouncement({ state }: { state: PublicState }) {
     return () => window.clearTimeout(timer);
   }, [game.matchId, game.phase, game.round, reduced, state.room.actionAvailableAt, state.room.phaseStartedAt, state.room.serverNow]);
   const copy = COPY[game.phase];
-  return <AnimatePresence>{visible && <motion.section className="phase-announcement" aria-live="assertive" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+  const cinematic = ["mission-briefing","cinematic-reveal","finale"].includes(game.phase);
+  return <AnimatePresence>{visible && <motion.section className={`phase-announcement ${cinematic?"phase-cinematic":"phase-compact"}`} aria-live={cinematic?"assertive":"polite"} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
     <motion.div className="announcement-light" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: reduced ? 0 : .7 }} />
     <motion.div className="announcement-crest" initial={{ scale: .65, rotate: -18 }} animate={{ scale: 1, rotate: 0 }}>{copy.icon}</motion.div>
     <div><span>Round {game.round} · {state.room.pacingProfile === "guided" ? "Guided Match" : "Quick Match"}</span><motion.h2 initial={{ y: reduced ? 0 : 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: reduced ? 0 : .25 }}>{copy.title}</motion.h2><strong>{copy.subtitle}</strong><p>{copy.action}</p></div>

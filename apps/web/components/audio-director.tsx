@@ -1,0 +1,3 @@
+"use client";
+import{useEffect}from"react";import{playCue,resumeAudio,setMusicPhase,type MusicPhase}from"../lib/audio";
+export function AudioDirector({phase}:{phase:MusicPhase}){useEffect(()=>setMusicPhase(phase),[phase]);useEffect(()=>{const click=(event:MouseEvent)=>{if((event.target as Element|null)?.closest("button"))playCue("button");};const visibility=()=>{if(document.visibilityState==="visible")void resumeAudio();};document.addEventListener("click",click);document.addEventListener("visibilitychange",visibility);return()=>{document.removeEventListener("click",click);document.removeEventListener("visibilitychange",visibility);};},[]);return null;}

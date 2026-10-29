@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PrivateState, PublicState } from "../lib/types";
+import { playCue } from "../lib/audio";
 
 interface Props {
   state: PublicState;
@@ -63,9 +64,9 @@ export function ChatPanel({ state, privateState, playerId, onSend, onSendPrivate
     <form onSubmit={async (event) => {
       event.preventDefault(); if (!body.trim() || (activeChannel === "private" && !recipientId)) return;
       const next = body; setBody("");
-      if (activeChannel === "public") await onSend(next); else await onSendPrivate(recipientId, next);
+      if (activeChannel === "public") await onSend(next); else await onSendPrivate(recipientId, next); playCue("message-send");
     }}>
-      <input value={body} maxLength={280} onFocus={(event) => { const input = event.currentTarget; setTimeout(() => input.scrollIntoView({ block: "nearest" }), 120); }} onChange={(event) => setBody(event.target.value)} placeholder={activeChannel === "public" ? "Broadcast to the table…" : "Send discreetly…"} aria-label={activeChannel === "public" ? "Chat message" : "Private message"} />
+      <input value={body} maxLength={280} onFocus={(event) => { const input = event.currentTarget; setTimeout(() => input.scrollIntoView({ block: "nearest" }), 120); }} onChange={(event) => { setBody(event.target.value); playCue("typing"); }} placeholder={activeChannel === "public" ? "Broadcast to the table…" : "Send discreetly…"} aria-label={activeChannel === "public" ? "Chat message" : "Private message"} />
       <button disabled={disabled || !body.trim() || (activeChannel === "private" && !recipientId)} aria-label="Send message">Send</button>
     </form>
   </section>;

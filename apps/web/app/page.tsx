@@ -13,6 +13,7 @@ import { CopyButton } from "../components/copy-button";
 import { MissionBriefing } from "../components/mission-briefing";
 import { SocialNotifications } from "../components/social-notifications";
 import { AudioControls } from "../components/audio-controls";
+import { AudioDirector } from "../components/audio-director";
 import { useGame } from "../lib/use-game";
 import type { PrivateState, PublicGame, PublicState } from "../lib/types";
 import { useSocialAttention, type SocialNotice, type SocialSection } from "../lib/social-attention";
@@ -112,7 +113,7 @@ export default function Home() {
     const timer = window.setTimeout(() => setMissionNotice(null), 3_500); return () => window.clearTimeout(timer);
   }, [game.privateState]);
 
-  if (!game.publicState) return <main className={`entry-page ${game.busy || !game.connected ? "is-loading" : ""}`}>
+  if (!game.publicState) return <main className={`entry-page ${game.busy || !game.connected ? "is-loading" : ""}`}><AudioDirector phase="lobby" />
     <Onboarding />
     <div className="entry-art-fill" aria-hidden="true" />
     <div className="entry-art" aria-hidden="true" />
@@ -132,8 +133,8 @@ export default function Home() {
     </section>
   </main>;
 
-  if (!game.publicState.game) return <Lobby state={game.publicState} playerId={game.session?.playerId ?? ""} busy={game.busy}
-    error={game.error} onStart={game.startMatch} onLeave={game.leaveRoom} onPacing={game.setPacing} />;
+  if (!game.publicState.game) return <><AudioDirector phase="lobby" /><Lobby state={game.publicState} playerId={game.session?.playerId ?? ""} busy={game.busy}
+    error={game.error} onStart={game.startMatch} onLeave={game.leaveRoom} onPacing={game.setPacing} /></>;
 
   const publicGame = game.publicState.game;
   const me = publicGame.players.find((player) => player.id === game.session?.playerId);
@@ -150,6 +151,7 @@ export default function Home() {
   const dealBadgeCount = Math.max(attention.unreadDeals, attention.pendingDeals);
   const socialBadgeCount = attention.unreadPublic + attention.unreadPrivate + dealBadgeCount;
   return <main className={`game-page phase-${publicGame.phase}${mobileOverlay === "wire" ? " social-open" : mobileOverlay === "objectives" ? " objectives-open" : ""}`}>
+    <AudioDirector phase={publicGame.phase} />
     <Onboarding allowOffer={false} />
     <PhaseAnnouncement state={game.publicState} />
     <AttentionAudio state={game.publicState} privateState={game.privateState} countdown={countdown} />
@@ -158,7 +160,7 @@ export default function Home() {
       <div className="compact-brand"><div className="brand-seal small"><span>U·Q</span></div><div><span>Underworld</span><b>Quick Takeover</b></div></div>
       <div className="round-display"><span>Round</span><b>{publicGame.round}<em>/5</em></b></div>
       <div className="phase-display"><span>{publicGame.phase.replaceAll("-", " ")}</span>{countdown !== null && <b className={countdown < 5_000 ? "urgent" : ""}>{Math.ceil(countdown / 1000)}s</b>}</div>
-      <div className="roster-strip" aria-label="Player roster">{publicGame.players.map((player) => <button type="button" key={player.id} className={player.id === me?.id ? "current" : ""} disabled={player.id === playerId} onClick={() => openSocial("private", player.id)} aria-label={player.id === playerId ? `${player.nickname}, your syndicate` : `Open private line with ${player.nickname}`}><span className={`boss-avatar boss-${player.seat}`} /><b>{player.nickname}</b><em>{player.influence}</em></button>)}</div>
+      <div className="roster-strip" aria-label="Player roster">{publicGame.players.map((player) => {const ready=game.publicState!.room.readyPlayerIds.includes(player.id);return <button type="button" key={player.id} className={`${player.id === me?.id ? "current " : ""}${ready ? "is-ready" : ""}`} disabled={player.id === playerId} onClick={() => openSocial("private", player.id)} aria-label={player.id === playerId ? `${player.nickname}, your syndicate` : `Open private line with ${player.nickname}`}><span className={`boss-avatar boss-${player.seat}`} /><b>{player.nickname}</b>{ready&&<i title="Ready">✓</i>}<em>{player.influence}</em></button>;})}</div>
       <div className="player-chip"><span className={`boss-avatar boss-${me?.seat ?? 0}`} /><span>{me?.nickname}<small><b className={game.connected ? "online" : "offline"}>{game.connected ? "Live" : "Reconnecting"}</b> · {me?.influence ?? 0} Influence</small></span><button className="match-menu-trigger" onClick={() => setMenuOpen(true)} aria-label="Open match menu">☰</button></div>
     </header>
     <PhaseGuide state={game.publicState} privateState={game.privateState} playerId={playerId} countdown={countdown} incomingDeals={attention.pendingDeals} onOpenOrders={() => { setMobileOverlay("objectives"); attention.markObjectives(); }} />
@@ -317,8 +319,10 @@ function Finale({ state, playerId, busy, vote, leave }: { state: PublicState; pl
   const [voted, setVoted] = useState(false); const score = state.finalScore;
   const winners = score?.winnerIds.map((id) => state.game!.players.find((player) => player.id === id)?.nickname).join(" & ");
   const winner = state.game!.players.find((player) => player.id === score?.winnerIds[0]);
+  const winnerScore = score?.standings.find((entry)=>entry.playerId===winner?.id);
+  const winnerDistricts = state.game!.activeDistricts.filter((id)=>state.game!.districts[id]?.ownerId===winner?.id).map((id)=>DISTRICT_LABELS[id]);
   const sharedVictory = (score?.winnerIds.length ?? 0) > 1;
-  return <section className="phase-card panel finale-card"><div className="winner-intro">{winner && <span className={`boss-avatar boss-${winner.seat}`} />}<div><span className="eyebrow">{state.game?.endedEarly ? "Early settlement · final score at the stopping point" : "The books are closed"}</span><h2>{sharedVictory ? `${winners} share the city` : score?.winnerIds.includes(playerId) ? "The city is yours" : `${winners} takes the city`}</h2><p>{sharedVictory ? "The leaders tied on points and every published tiebreaker, so victory is shared." : `${winner?.nickname} commands the final chapter.`}</p></div></div>
+  return <section className={`phase-card panel finale-card ${score?.winnerIds.includes(playerId)?"is-victory":"is-defeat"}`}><div className="winner-intro">{winner && <span className={`boss-avatar boss-${winner.seat}`} />}<div><span className="eyebrow">{state.game?.endedEarly ? "Early settlement · final score at the stopping point" : "The books are closed"}</span><h2>{sharedVictory ? `${winners} share the city` : score?.winnerIds.includes(playerId) ? "The city is yours" : `${winners} owns the night`}</h2><p>{sharedVictory ? "The leaders tied on points and every published tiebreaker, so victory is shared." : `${winner?.nickname} commands the final chapter.`}</p><div className="winner-verdict"><b>{winnerScore?.total??0} points</b><span>{winnerScore?.controlledDistricts??0} districts controlled</span><small>{winnerDistricts.length?winnerDistricts.join(" · "):"Power secured through missions and operations"}</small></div></div></div>
     <div className="score-table">{score?.standings.map((entry, index) => { const player = state.game!.players.find((candidate) => candidate.id === entry.playerId)!; return <div key={entry.playerId} className={entry.playerId === playerId ? "me" : ""}><strong>{index + 1}</strong><span><b>{player.nickname}</b><small>Primary {entry.primary} + sides {entry.sides} + districts {entry.districts} + operations {entry.operations}</small><small className="tiebreak-stats">Tiebreakers: {entry.controlledDistricts} controlled · {entry.influence} Influence · {entry.betrayedDeals} betrayals</small></span><em>{entry.total}<small>pts</small></em></div>; })}</div>
     <p className="tiebreak-copy">{TIEBREAK_COPY}</p>
     <details className="objective-reveal"><summary>Reveal every objective</summary><div>{state.finalObjectives?.map((entry) => { const player = state.game!.players.find((candidate) => candidate.id === entry.playerId)!; return <article key={entry.playerId}><b>{player.nickname}</b>{entry.objectives.map((objective) => <span key={objective.id} className={objective.completed ? "complete" : "missed"}><i>{objective.completed ? "✓" : "×"}</i>{OBJECTIVE_NAMES[objective.id] ?? objective.id}<em>{objective.points}</em></span>)}</article>; })}</div></details>

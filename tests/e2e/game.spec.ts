@@ -100,13 +100,13 @@ test("sound requires explicit activation and exposes honest controls", async ({ 
   const controls = page.getByRole("region", { name: "Sound controls" });
   await expect(controls.getByRole("button", { name: "Enable sound" })).toBeVisible();
   await controls.getByRole("button", { name: "Enable sound" }).click();
-  await expect(controls.getByText("Sound enabled. Did you hear the confirmation?")).toBeVisible();
+  await expect(controls.getByText("Sound and music enabled. Use Test Sound to verify your speaker.")).toBeVisible();
   await expect(controls.getByRole("button", { name: "Test Sound" })).toBeVisible();
   await controls.getByRole("button", { name: "Test Sound" }).click();
   await expect(controls.getByText("Test sound scheduled. Did you hear it?")).toBeVisible();
-  await controls.getByRole("button", { name: "Sound · On" }).click();
-  await expect(controls.getByText("Sound muted.")).toBeVisible();
-  await expect.poll(() => page.evaluate(() => ({ enabled: localStorage.getItem("underworld.audio.enabled"), muted: localStorage.getItem("underworld.audio.muted") }))).toEqual({ enabled: "true", muted: "true" });
+  await controls.getByRole("button", { name: "Audio · On" }).click();
+  await expect(controls.getByText("All audio muted.")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({ enabled: localStorage.getItem("underworld.audio.enabled"), muted: localStorage.getItem("underworld.audio.muted"), music: localStorage.getItem("underworld.audio.music-volume") }))).toEqual({ enabled: "true", muted: "true", music: "0.28" });
 });
 
 test("release layouts avoid console failures, shifts, overflow, and undersized primary controls", async ({ browser }) => {

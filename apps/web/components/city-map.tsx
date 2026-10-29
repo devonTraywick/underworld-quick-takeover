@@ -34,7 +34,7 @@ export function CityMap({ game, selected, effect, currentPlayerId, operationName
   const inspectedOwner = inspected.ownerId ? playerById.get(inspected.ownerId) : null;
   const totalStake = Object.values(inspected.stakes).reduce((total, value) => total + value, 0);
   return (
-    <div className="map-shell" aria-label="City district map">
+    <div className={`map-shell ${effect?`map-effect effect-${effect.type}`:""}`} aria-label="City district map">
       <div className="city-art" aria-hidden="true" />
       <div className="map-grid" aria-hidden="true" />
       <svg className="city-map" viewBox="0 0 640 490" role="group">
@@ -64,7 +64,8 @@ export function CityMap({ game, selected, effect, currentPlayerId, operationName
           );
         })}
       </svg>
-      {effect?.districtId && ["district-captured", "district-contested"].includes(effect.type) && <div className={`capture-headline effect-${effect.type}`} role="status"><b>{LABELS[effect.districtId]}</b><span>{effect.type === "district-captured" ? `Captured by ${game.players.find((player) => player.id === effect.ownerId)?.nickname ?? "a rival"}` : "Now contested"}</span></div>}
+      {effect?.districtId && ["stakes-added","stakes-removed"].includes(effect.type) && <div className={`stake-change-callout effect-${effect.type}`} role="status"><span>{effect.type==="stakes-added"?"+":"−"}{effect.amount} stake{effect.amount===1?"":"s"}</span><b>{LABELS[effect.districtId]}</b></div>}
+      {effect?.districtId && ["district-captured", "district-contested"].includes(effect.type) && <div className={`capture-headline effect-${effect.type}`} role="status">{effect.ownerId&&<span className={`boss-avatar boss-${game.players.find((player)=>player.id===effect.ownerId)?.seat??0}`} />}<div><b>{LABELS[effect.districtId]}</b><span>{effect.type === "district-captured" ? `Captured by ${game.players.find((player) => player.id === effect.ownerId)?.nickname ?? "a rival"}` : "Now contested"}</span></div></div>}
       <aside className="district-inspector" aria-live="polite"><div><span>District intelligence</span><strong>{LABELS[focused]}</strong></div><dl><div><dt>Control</dt><dd>{inspectedOwner?.nickname ?? "Contested / neutral"}</dd></div><div><dt>Total stakes</dt><dd>{totalStake}</dd></div><div><dt>Your stake</dt><dd>{currentPlayerId ? inspected.stakes[currentPlayerId] ?? 0 : 0}</dd></div></dl><div className="district-rivals">{Object.entries(inspected.stakes).filter(([, stake]) => stake > 0).sort((a, b) => b[1] - a[1]).map(([id, stake]) => <span key={id}><i style={{ background: FACTIONS[(playerById.get(id)?.seat ?? 0) % FACTIONS.length] }} />{playerById.get(id)?.nickname}<b>{stake}</b></span>)}</div>{operationName && <p><b>{operationName}</b> · {eligibleDistricts?.includes(focused) === false ? "No qualifying rival stake here; fallback rules apply." : "Valid target. Select it, then deploy."}</p>}</aside>
       <div className="map-legend">
         {game.players.map((player) => <span key={player.id}><i style={{ background: FACTIONS[player.seat % FACTIONS.length] }} />{player.nickname}</span>)}
