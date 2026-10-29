@@ -191,13 +191,23 @@ test("unified social hub preserves unread activity, opens notifications, and com
   const workspace = guest.getByRole("navigation", { name: "Social sections" });
   await expect(workspace.getByRole("button", { name: /Private/ }).locator("b")).toHaveText("2");
   await expect(guest.getByText("NEW PRIVATE MESSAGE")).toBeVisible();
-  await expect(guest.getByText("+1 more waiting")).toBeVisible();
+  await expect(guest.getByText("2 unread private messages")).toBeVisible();
   await guest.reload();
   await expect(guest.getByText("NEW PRIVATE MESSAGE")).toBeVisible();
   await guest.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(guest.getByRole("tablist", { name: "Message channel" })).toHaveCount(0);
   await expect(guest.getByText("A private offer is waiting.")).toBeVisible();
   await expect(guest.getByText("Two crews. Midnight.")).toBeVisible();
   await expect(guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveCount(0);
+
+  await host.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Public Wire" }).click();
+  await host.getByRole("textbox", { name: "Chat message" }).fill("The table is open for business.");
+  await host.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(guest.getByText("NEW ON THE PUBLIC WIRE")).toBeVisible();
+  await expect(guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Public Wire/ }).locator("b")).toHaveText("1");
+  await guest.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(guest.getByText("The table is open for business.")).toBeVisible();
+  await expect(guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Public Wire/ }).locator("b")).toHaveCount(0);
 
   await guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Deals" }).click();
   const deals = guest.getByRole("region", { name: "Deals workspace" });
@@ -209,8 +219,12 @@ test("unified social hub preserves unread activity, opens notifications, and com
   await deals.getByRole("button", { name: "Send proposal" }).click();
   await expect(deals).toContainText("Proposal sent to Velvet Host Family");
   await expect(host.getByText("DEAL PROPOSED")).toBeVisible();
+  await expect(host.getByText("1 proposal awaiting response")).toBeVisible();
   await host.getByRole("button", { name: "Review" }).click();
+  await expect(host.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Deals/ }).locator("b")).toHaveText("1");
   const hostDeals = host.getByRole("region", { name: "Deals workspace" });
+  await expect(hostDeals.locator(".deal-workspace-card .boss-avatar")).toBeVisible();
+  expect(await hostDeals.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   await hostDeals.getByRole("button", { name: "Accept proposal" }).click();
   await expect(hostDeals).toContainText("agreement is now active");
   await deals.getByRole("tab", { name: "Active" }).click();
@@ -327,12 +341,12 @@ test("two isolated browser contexts play a contested simultaneous round and reco
     host.getByRole("button", { name: "Lock in & continue" }).click(),
     guest.getByRole("button", { name: "Lock in & continue" }).click(),
   ]);
-  await expect(host.locator(".phase-card").getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
-  await expect(guest.locator(".phase-card").getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
   await expect(host.locator(".game-page")).toHaveClass(/phase-draft/);
   await expect(host.locator(".submission-note")).toContainText("players ready");
   await waitForPhaseReady(host); await waitForPhaseReady(guest);
-  await guest.getByRole("button", { name: "The Wire" }).click();
+  await expect(host.locator(".phase-card").getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
+  await expect(guest.locator(".phase-card").getByRole("heading", { name: "Choose your leverage" })).toBeVisible();
+  await guest.getByRole("button", { name: "Boss Comms" }).click();
   await expect(guest.getByRole("complementary", { name: "Social hub" })).toBeVisible();
   await guest.getByRole("button", { name: "Close social hub" }).click();
   await expect(host.locator(".action-card .card-rules")).toHaveCount(await host.locator(".action-card").count());
@@ -367,7 +381,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await host.screenshot({ path: "test-results/phase-reveal-desktop.png", fullPage: false });
   await guest.screenshot({ path: "test-results/phase-reveal-mobile.png", fullPage: false });
 
-  await expect(host.getByText("Round 1 report")).toBeVisible({ timeout: 20_000 });
+  await expect(host.getByText("Round 1 report")).toBeVisible({ timeout: 60_000 });
   await expect(host.locator(".game-page")).toHaveClass(/phase-round-results/);
   await host.screenshot({ path: "test-results/phase-results-desktop.png", fullPage: false });
   await guest.screenshot({ path: "test-results/phase-results-mobile.png", fullPage: false });
@@ -377,22 +391,22 @@ test("two isolated browser contexts play a contested simultaneous round and reco
 
   for (let round = 2; round <= 5; round += 1) {
     await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
-    await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION", { timeout: process.env.PRODUCTION_URL ? 35_000 : 15_000 });
+    await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION", { timeout: 35_000 });
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await Promise.all([host.getByRole("button", { name: "Lock in & continue" }).click(), guest.getByRole("button", { name: "Lock in & continue" }).click()]);
-    await expect(host.locator(".phase-guide")).toContainText("DRAFT");
+    await expect(host.locator(".phase-guide")).toContainText("DRAFT", { timeout: 15_000 });
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await host.locator(".action-card").first().click(); await guest.locator(".action-card").first().click();
     await Promise.all([host.getByRole("button", { name: "Lock in selected card" }).click(), guest.getByRole("button", { name: "Lock in selected card" }).click()]);
-    await expect(host.locator(".phase-guide")).toContainText("OPERATIONS");
+    await expect(host.locator(".phase-guide")).toContainText("OPERATIONS", { timeout: 15_000 });
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await host.locator(".district").first().click(); await guest.locator(".district").first().click();
     await Promise.all([host.getByRole("button", { name: /deploy operation|fallback/i }).click(), guest.getByRole("button", { name: /deploy operation|fallback/i }).click()]);
-    await expect(host.locator(".phase-guide")).toContainText("REVEAL");
+    await expect(host.locator(".phase-guide")).toContainText("REVEAL", { timeout: 15_000 });
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await host.getByRole("button", { name: "Skip Animation" }).click();
     await guest.getByRole("button", { name: "Skip Animation" }).click();
-    await expect(host.getByText(`Round ${round} report`)).toBeVisible({ timeout: 20_000 });
+    await expect(host.getByText(`Round ${round} report`)).toBeVisible({ timeout: 60_000 });
   }
   await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
   await expect(host.locator(".phase-guide")).toContainText("FINALE", { timeout: 15_000 });

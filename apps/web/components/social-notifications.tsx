@@ -5,7 +5,7 @@ import type { PublicGame } from "../lib/types";
 import type { SocialNotice } from "../lib/social-attention";
 import { playCue } from "../lib/audio";
 
-export function SocialNotifications({ notices, game, onOpen, onDismiss }: { notices: SocialNotice[]; game: PublicGame; onOpen: (notice: SocialNotice) => void; onDismiss: (key: string) => void }) {
+export function SocialNotifications({ notices, game, unreadPrivate, pendingDeals, onOpen, onDismiss }: { notices: SocialNotice[]; game: PublicGame; unreadPrivate: number; pendingDeals: number; onOpen: (notice: SocialNotice) => void; onDismiss: (key: string) => void }) {
   const active = notices[0];
   const sounded = useRef("");
   useEffect(() => {
@@ -18,7 +18,7 @@ export function SocialNotifications({ notices, game, onOpen, onDismiss }: { noti
   const actor = game.players.find((player) => player.id === active.actorId);
   return <aside className={`social-notice notice-${active.kind}`} role="status" aria-live={active.kind === "public" ? "polite" : "assertive"}>
     <span className={`boss-avatar boss-${actor?.seat ?? 0}`} aria-hidden="true" />
-    <div><b>{active.title}</b><p>{active.summary}</p>{notices.length > 1 && <small>+{notices.length - 1} more waiting</small>}</div>
+    <div><b>{active.title}</b><p>{active.summary}</p><small>{active.section === "deals" && pendingDeals > 0 ? `${pendingDeals} proposal${pendingDeals === 1 ? "" : "s"} awaiting response` : active.section === "private" && unreadPrivate > 0 ? `${unreadPrivate} unread private message${unreadPrivate === 1 ? "" : "s"}` : notices.length > 1 ? `+${notices.length - 1} more waiting` : "Open Boss Communications"}</small></div>
     <button className="notice-open" onClick={() => onOpen(active)}>{active.section === "deals" ? "Review" : "Open"}</button>
     <button className="notice-dismiss" aria-label="Dismiss notification" onClick={() => onDismiss(active.key)}>×</button>
   </aside>;

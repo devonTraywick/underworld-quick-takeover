@@ -419,7 +419,7 @@ export class MultiplayerServer {
   }
 
   private profile(room: RoomRecord): PhaseDurations {
-    return this.durations.introduction === 0 ? this.durations : PACING[room.pacingProfile ?? "quick"];
+    return this.customDurations ? this.durations : PACING[room.pacingProfile ?? "quick"];
   }
 
   private scheduleCompletion(room: RoomRecord): void {

@@ -15,18 +15,19 @@ const DEAL_RULES: Record<DealType, string> = {
 };
 type DealTab = "incoming" | "outgoing" | "active";
 
-function otherName(deal: Deal, game: PublicGame, playerId: string): string {
+function otherBoss(deal: Deal, game: PublicGame, playerId: string) {
   const otherId = deal.proposerId === playerId ? deal.recipientId : deal.proposerId;
-  return game.players.find((player) => player.id === otherId)?.nickname ?? "Unknown boss";
+  return game.players.find((player) => player.id === otherId);
 }
 
 function DealCard({ deal, game, playerId, disabled, negotiationOpen, respond, withdraw }: { deal: Deal; game: PublicGame; playerId: string; disabled: boolean; negotiationOpen: boolean; respond: (id: string, accept: boolean) => Promise<unknown>; withdraw: (id: string) => Promise<unknown> }) {
   const incoming = deal.recipientId === playerId && deal.status === "pending" && deal.round === game.round;
   const outgoing = deal.proposerId === playerId && deal.status === "pending" && deal.round === game.round;
+  const rival = otherBoss(deal, game, playerId);
   return <article className={`deal-workspace-card ${incoming ? "needs-attention" : ""}`}>
-    <header><div><span>{incoming ? "Incoming proposal" : outgoing ? "Sent proposal" : "Agreement"}</span><b>{DEAL_NAMES[deal.type]}</b></div><em className={`status status-${deal.status}`}>{dealStatusLabel(deal, game.round)}</em></header>
-    <dl><div><dt>Other boss</dt><dd>{otherName(deal, game, playerId)}</dd></div>{deal.terms.districtId && <div><dt>District</dt><dd>{DISTRICT_LABELS[deal.terms.districtId]}</dd></div>}</dl>
-    <p>{DEAL_RULES[deal.type]}</p>
+    <header><span className={`boss-avatar boss-${rival?.seat ?? 0}`} aria-hidden="true" /><div><span>{incoming ? "Incoming proposal" : outgoing ? "Sent proposal" : "Agreement"}</span><b>{rival?.nickname ?? "Unknown boss"}</b><small>{DEAL_NAMES[deal.type]}</small></div><em className={`status status-${deal.status}`}>{dealStatusLabel(deal, game.round)}</em></header>
+    <dl><div><dt>Agreement</dt><dd>{DEAL_NAMES[deal.type]}</dd></div>{deal.terms.districtId && <div><dt>District</dt><dd>{DISTRICT_LABELS[deal.terms.districtId]}</dd></div>}</dl>
+    <p><b>Terms</b>{DEAL_RULES[deal.type]}</p>
     {incoming && <div className="deal-response-actions"><button className="reject-deal" disabled={disabled || !negotiationOpen} onClick={() => respond(deal.id, false)}>Reject proposal</button><button className="accept-deal" disabled={disabled || !negotiationOpen} onClick={() => respond(deal.id, true)}>Accept proposal</button></div>}
     {outgoing && <button className="cancel-deal" disabled={disabled || !negotiationOpen} onClick={() => withdraw(deal.id)}>Cancel proposal</button>}
   </article>;
