@@ -47,6 +47,43 @@ async function joinRoom(context: BrowserContext, roomCode: string, nickname: str
   return page;
 }
 
+async function endMatchBySettlement(host: Page, guest: Page): Promise<void> {
+  await host.getByRole("button", { name: "Open match menu" }).click();
+  const menu = host.getByRole("dialog", { name: "Match menu" });
+  host.once("dialog", (dialog) => dialog.accept());
+  await menu.getByRole("button", { name: "End Match" }).click();
+  const hostVote = host.getByRole("dialog", { name: "Vote to end match" });
+  const guestVote = guest.getByRole("dialog", { name: "Vote to end match" });
+  await expect(hostVote).toBeVisible();
+  await expect(guestVote).toBeVisible();
+  await expect(hostVote).toContainText("Your vote is sealed");
+  await guestVote.getByRole("button", { name: "End match" }).click();
+  await expect(host.locator(".game-page")).toHaveClass(/phase-finale/, { timeout: 15_000 });
+}
+
+async function verifyFinaleAccess(page: Page, expectedLabel: "Early Settlement" | "Final Results"): Promise<boolean> {
+  await expect(page.locator(".phase-guide > strong")).toHaveText(expectedLabel);
+  const finale = page.getByRole("region", { name: "Final results" });
+  await expect(finale).toBeVisible();
+  const objectives = finale.locator(".objective-reveal");
+  if (!(await objectives.evaluate((node) => (node as HTMLDetailsElement).open))) await objectives.locator("summary").click();
+  await expect(objectives.locator("article")).toHaveCount(2);
+  await expect(objectives.locator("article span")).toHaveCount(6);
+  await finale.focus();
+  const scrolls = await finale.evaluate((node) => node.scrollHeight > node.clientHeight + 1);
+  if (scrolls) {
+    await page.keyboard.press("End");
+    await expect.poll(() => finale.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  }
+  await expect(finale.getByRole("button", { name: "Demand a rematch" })).toBeInViewport();
+  await expect(finale.getByRole("button", { name: "Return to lobby" })).toBeInViewport();
+  if (scrolls) {
+    await page.keyboard.press("Home");
+    await expect.poll(() => finale.evaluate((node) => node.scrollTop)).toBe(0);
+  }
+  return scrolls;
+}
+
 test("the interactive training match validates actions, resolves the engine, and persists completion", async ({ page }) => {
   await page.goto("/");
   const offer = page.getByRole("dialog", { name: "Play the training takeover" });
@@ -234,6 +271,51 @@ test("phase controls and communications stay reachable across release viewports"
 
     await hostContext.close(); await guestContext.close();
   }
+});
+
+test("early-settlement finale exposes every result and control across release viewports and zoom", async ({ browser }) => {
+  test.setTimeout(180_000);
+  const hostContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, hasTouch: true });
+  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const { page: host, roomCode } = await createRoom(hostContext, "Settlement Host");
+  const guest = await joinRoom(guestContext, roomCode, "Settlement Guest");
+  await host.getByRole("button", { name: /Quick Match/ }).click();
+  await host.getByRole("button", { name: "Begin takeover" }).click();
+  await acceptBriefings(host, guest);
+  await waitForPhaseReady(host); await waitForPhaseReady(guest);
+  await endMatchBySettlement(host, guest);
+  await expect(host.locator(".phase-guide")).toContainText("EARLY SETTLEMENT — Final results");
+
+  const cases = [
+    { width: 1440, height: 900, zoom: 1, label: "1440x900" },
+    { width: 1280, height: 800, zoom: 1, label: "1280x800" },
+    { width: 1024, height: 768, zoom: 1, label: "1024x768" },
+    { width: 768, height: 1024, zoom: 1, label: "768x1024" },
+    { width: 390, height: 844, zoom: 1, label: "390x844" },
+    { width: 360, height: 800, zoom: 1, label: "360x800" },
+    // Browser zoom reduces the CSS layout viewport by the zoom factor.
+    { width: 1152, height: 720, zoom: 1.25, label: "1440x900-zoom-125" },
+    { width: 960, height: 600, zoom: 1.5, label: "1440x900-zoom-150" },
+  ];
+  let sawOverflow = false;
+  for (const current of cases) {
+    await host.setViewportSize({ width: current.width, height: current.height });
+    const finale = host.getByRole("region", { name: "Final results" });
+    await finale.evaluate((node) => { node.scrollTop = 0; });
+    sawOverflow = (await verifyFinaleAccess(host, "Early Settlement")) || sawOverflow;
+    expect(await finale.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    if (current.label === "1440x900" || current.label === "360x800" || current.zoom > 1) {
+      await host.screenshot({ path: `test-results/finale-${current.label}.png`, fullPage: false });
+    }
+  }
+  expect(sawOverflow).toBe(true);
+  await host.setViewportSize({ width: 360, height: 800 });
+  const finale = host.getByRole("region", { name: "Final results" });
+  await finale.evaluate((node) => { node.scrollTop = 0; });
+  await finale.hover();
+  await host.mouse.wheel(0, 700);
+  await expect.poll(() => finale.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  await hostContext.close(); await guestContext.close();
 });
 
 test("invite copy confirms only after success, resets, and offers a failure fallback", async ({ context }) => {
@@ -497,6 +579,8 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
   await expect(host.locator(".phase-guide")).toContainText("FINALE", { timeout: process.env.PRODUCTION_URL ? 40_000 : 15_000 });
   await expect(guest.locator(".finale-card")).toBeVisible();
+  await verifyFinaleAccess(host, "Final Results");
+  await host.screenshot({ path: "test-results/finale-normal-desktop.png", fullPage: false });
 
   expect(await host.locator("body").evaluate((body) => body.textContent?.includes("Crimson Guest") ?? false)).toBe(true);
   await Promise.all([host.getByRole("button", { name: "Demand a rematch" }).click(), guest.getByRole("button", { name: "Demand a rematch" }).click()]);
