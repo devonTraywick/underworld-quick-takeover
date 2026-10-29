@@ -110,7 +110,13 @@ test("sound requires explicit activation and exposes honest controls", async ({ 
 });
 
 test("release layouts avoid console failures, shifts, overflow, and undersized primary controls", async ({ browser }) => {
-  for (const viewport of [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }]) {
+  for (const viewport of [
+    { width: 360, height: 800 }, // compact Android-class viewport
+    { width: 390, height: 844 }, // compact iPhone-class viewport
+    { width: 412, height: 915 }, // large Android-class viewport
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 },
+  ]) {
     const context = await browser.newContext({ viewport });
     await context.addInitScript(() => {
       (window as typeof window & { __releaseCLS?: number }).__releaseCLS = 0;
@@ -409,7 +415,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
     await expect(host.getByText(`Round ${round} report`)).toBeVisible({ timeout: 60_000 });
   }
   await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
-  await expect(host.locator(".phase-guide")).toContainText("FINALE", { timeout: 15_000 });
+  await expect(host.locator(".phase-guide")).toContainText("FINALE", { timeout: process.env.PRODUCTION_URL ? 40_000 : 15_000 });
   await expect(guest.locator(".finale-card")).toBeVisible();
 
   expect(await host.locator("body").evaluate((body) => body.textContent?.includes("Crimson Guest") ?? false)).toBe(true);

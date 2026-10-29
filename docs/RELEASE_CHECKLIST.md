@@ -22,7 +22,7 @@
 
 ## Compatibility and release
 
-- [x] Verify a 390 px mobile viewport without horizontal overflow.
+- [x] Verify 360 px, 390 px, and 412 px mobile-class emulated viewports without horizontal overflow.
 - [ ] Verify current Chrome, Safari, Firefox, and Edge.
 - [x] Verify keyboard focus and reduced-motion behavior in automated Chromium.
 - [x] Verify the social share image and metadata build output.
