@@ -160,6 +160,82 @@ test("desktop lobby expands setup controls without requiring page scrolling", as
   }
 });
 
+test("phase controls and communications stay reachable across release viewports", async ({ browser }) => {
+  test.setTimeout(240_000);
+  const viewports = [
+    { width: 1440, height: 900 },
+    { width: 1280, height: 800 },
+    { width: 1024, height: 768 },
+    { width: 768, height: 1024 },
+    { width: 390, height: 844 },
+    { width: 360, height: 800 },
+  ];
+
+  for (const viewport of viewports) {
+    const hostContext = await browser.newContext({ viewport });
+    const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const { page: host, roomCode } = await createRoom(hostContext, `Viewport Host ${viewport.width}`);
+    const guest = await joinRoom(guestContext, roomCode, `Viewport Guest ${viewport.width}`);
+    await host.getByRole("button", { name: /Quick Match/ }).click();
+    await host.getByRole("button", { name: "Begin takeover" }).click();
+    await acceptBriefings(host, guest);
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
+
+    const socialNav = viewport.width <= 820
+      ? host.getByRole("navigation", { name: "Command panels" })
+      : host.getByRole("navigation", { name: "City actions" });
+    await socialNav.getByRole("button", { name: "Make Deal" }).click();
+    const social = host.getByRole("complementary", { name: "Social hub" });
+    await expect(social).toBeVisible();
+    const initialBox = await social.boundingBox();
+    expect(initialBox).not.toBeNull();
+    expect(initialBox!.x).toBeGreaterThanOrEqual(0);
+    expect(initialBox!.x + initialBox!.width).toBeLessThanOrEqual(viewport.width + 1);
+    expect(initialBox!.y + initialBox!.height).toBeLessThanOrEqual(viewport.height + 1);
+
+    const sections = host.getByRole("navigation", { name: "Social sections" });
+    await sections.getByRole("button", { name: "Private" }).click();
+    const privateWorkspace = social.locator(".workspace-chat");
+    await expect(privateWorkspace).toBeVisible();
+    expect((await privateWorkspace.boundingBox())!.width).toBeGreaterThan(initialBox!.width * .85);
+    const composer = privateWorkspace.locator("form");
+    await expect(composer).toBeVisible();
+    const composerBox = await composer.boundingBox();
+    expect(composerBox!.y + composerBox!.height).toBeLessThanOrEqual(initialBox!.y + initialBox!.height + 1);
+    if (viewport.width === 1440 || viewport.width === 360) await host.screenshot({ path: `test-results/hotfix-${viewport.width}x${viewport.height}-private.png`, fullPage: false });
+
+    await sections.getByRole("button", { name: "Deals" }).click();
+    const deals = host.getByRole("region", { name: "Deals workspace" });
+    await expect(deals).toBeVisible();
+    expect((await deals.boundingBox())!.width).toBeGreaterThan(initialBox!.width * .85);
+    const afterTabsBox = await social.boundingBox();
+    expect(Math.abs(afterTabsBox!.width - initialBox!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterTabsBox!.height - initialBox!.height)).toBeLessThanOrEqual(1);
+    if (viewport.width === 1440 || viewport.width === 360) await host.screenshot({ path: `test-results/hotfix-${viewport.width}x${viewport.height}-deals.png`, fullPage: false });
+    await host.getByRole("button", { name: "Close social hub" }).click();
+
+    await Promise.all([
+      host.getByRole("button", { name: "Lock in & continue" }).click(),
+      guest.getByRole("button", { name: "Lock in & continue" }).click(),
+    ]);
+    await expect(host.locator(".phase-guide")).toContainText("DRAFT", { timeout: 15_000 });
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
+    await host.locator(".action-card").first().click();
+    const lock = host.getByRole("button", { name: "Lock in selected card" });
+    await lock.scrollIntoViewIfNeeded();
+    await expect(lock).toBeVisible();
+    const lockBox = await lock.boundingBox();
+    expect(lockBox!.y).toBeGreaterThanOrEqual(0);
+    expect(lockBox!.y + lockBox!.height).toBeLessThanOrEqual(viewport.height + 1);
+    if (viewport.width === 1440 || viewport.width === 360) await host.screenshot({ path: `test-results/hotfix-${viewport.width}x${viewport.height}-draft.png`, fullPage: false });
+    await lock.click();
+    await expect(host.getByRole("button", { name: "Card locked" })).toBeVisible();
+    expect(await host.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+    await hostContext.close(); await guestContext.close();
+  }
+});
+
 test("invite copy confirms only after success, resets, and offers a failure fallback", async ({ context }) => {
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => undefined } });
@@ -288,6 +364,10 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   await expect(guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveText("1");
   await guest.getByRole("button", { name: "Open", exact: true }).click();
   await expect(guest.getByText("The docks are quiet tonight.")).toBeVisible();
+  await host.getByRole("navigation", { name: "City actions" }).getByRole("button", { name: /Make Deal/ }).click();
+  await host.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Private" }).click();
+  await host.screenshot({ path: "test-results/social-private-desktop.png", fullPage: false });
+  await guest.screenshot({ path: "test-results/social-private-mobile.png", fullPage: false });
   await expect(guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: /Private/ }).locator("b")).toHaveCount(0);
 
   await guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Deals" }).click();
