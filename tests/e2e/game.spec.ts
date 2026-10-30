@@ -136,13 +136,17 @@ test("sound requires explicit activation and exposes honest controls", async ({ 
   await dismissOnboarding(page);
   const controls = page.getByRole("region", { name: "Sound controls" });
   await expect(controls.getByRole("button", { name: "Enable sound" })).toBeVisible();
+  const soundtrack = page.waitForResponse((response) => response.url().endsWith("/audio/underworld-noir-loop.wav"));
   await controls.getByRole("button", { name: "Enable sound" }).click();
-  await expect(controls.getByText("Sound and music enabled. Use Test Sound to verify your speaker.")).toBeVisible();
+  const soundtrackResponse = await soundtrack;
+  expect(soundtrackResponse.ok()).toBe(true);
+  expect(Number(soundtrackResponse.headers()["content-length"] ?? 0)).toBeGreaterThan(1_000_000);
+  await expect(controls.getByText("Sound and noir soundtrack enabled. Use Test Sound to verify your speaker.")).toBeVisible();
   await expect(controls.getByRole("button", { name: "Test Sound" })).toBeVisible();
   await controls.getByRole("button", { name: "Test Sound" }).click();
-  await expect(controls.getByText("Test sound scheduled. Did you hear it?")).toBeVisible();
-  await controls.getByRole("button", { name: "Audio · On" }).click();
-  await expect(controls.getByText("All audio muted.")).toBeVisible();
+  await expect(controls.getByText("Effects test scheduled. Did you hear it?")).toBeVisible();
+  await controls.getByRole("button", { name: "Master · On" }).click();
+  await expect(controls.getByText("Music and effects muted.")).toBeVisible();
   await expect.poll(() => page.evaluate(() => ({ enabled: localStorage.getItem("underworld.audio.enabled"), muted: localStorage.getItem("underworld.audio.muted"), music: localStorage.getItem("underworld.audio.music-volume") }))).toEqual({ enabled: "true", muted: "true", music: "0.28" });
 });
 
@@ -239,6 +243,12 @@ test("phase controls and communications stay reachable across release viewports"
     await expect(composer).toBeVisible();
     const composerBox = await composer.boundingBox();
     expect(composerBox!.y + composerBox!.height).toBeLessThanOrEqual(initialBox!.y + initialBox!.height + 1);
+    const privateInput = composer.getByRole("textbox", { name: "Private message" });
+    await privateInput.focus();
+    const inputBox = await privateInput.boundingBox();
+    expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(viewport.height + 1);
+    if (viewport.width <= 430) expect(await privateInput.evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(16);
+    expect(await social.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
     if (viewport.width === 1440 || viewport.width === 360) await host.screenshot({ path: `test-results/hotfix-${viewport.width}x${viewport.height}-private.png`, fullPage: false });
 
     await sections.getByRole("button", { name: "Deals" }).click();
@@ -268,6 +278,34 @@ test("phase controls and communications stay reachable across release viewports"
     await lock.click();
     await expect(host.getByRole("button", { name: "Card locked" })).toBeVisible();
     expect(await host.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+    await guest.locator(".action-card").first().click();
+    await guest.getByRole("button", { name: "Lock in selected card" }).click();
+    await expect(host.locator(".phase-guide")).toContainText("OPERATIONS", { timeout: 15_000 });
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
+    await host.locator(".district").first().click(); await guest.locator(".district").first().click();
+    await expect(host.locator(".target-preview")).toContainText(/Downtown|Docks|Quarter|Row|Heights|Yard|Strip/);
+    const deploy = host.getByRole("button", { name: /deploy operation|fallback/i });
+    await deploy.scrollIntoViewIfNeeded();
+    const deployBox = await deploy.boundingBox();
+    expect(deployBox!.height).toBeGreaterThanOrEqual(42);
+    expect(deployBox!.y + deployBox!.height).toBeLessThanOrEqual(viewport.height + 1);
+    if (viewport.width === 1440 || viewport.width === 360) await host.screenshot({ path: `test-results/hotfix2-after-${viewport.width}x${viewport.height}-operations.png`, fullPage: false });
+    await Promise.all([deploy.click(), guest.getByRole("button", { name: /deploy operation|fallback/i }).click()]);
+    await expect(host.locator(".phase-guide")).toContainText("REVEAL", { timeout: 15_000 });
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
+    await host.getByRole("button", { name: "Skip Animation" }).click(); await guest.getByRole("button", { name: "Skip Animation" }).click();
+    await expect(host.getByText("Round 1 report")).toBeVisible({ timeout: 60_000 });
+    const results = host.locator(".results-card");
+    await expect(results.getByRole("button", { name: /Continue/ })).toBeInViewport();
+    await expect(results.locator(".results-heading p")).toBeVisible();
+    if (viewport.width <= 820) {
+      await expect(results.locator(".result-columns")).toBeHidden();
+      await results.getByRole("button", { name: "View Full Results" }).click();
+      await expect(results.locator(".result-columns")).toBeVisible();
+    }
+    expect(await results.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    if (viewport.width === 1440 || viewport.width === 360) await host.screenshot({ path: `test-results/hotfix2-after-${viewport.width}x${viewport.height}-results.png`, fullPage: false });
 
     await hostContext.close(); await guestContext.close();
   }
@@ -355,7 +393,7 @@ test("unified social hub preserves unread activity, opens notifications, and com
   const workspace = guest.getByRole("navigation", { name: "Social sections" });
   await expect(workspace.getByRole("button", { name: /Private/ }).locator("b")).toHaveText("2");
   await expect(guest.getByText("NEW PRIVATE MESSAGE")).toBeVisible();
-  await expect(guest.getByText("2 unread private messages")).toBeVisible();
+  await expect(guest.getByText("2 unread private messages")).toHaveText("2 unread private messages");
   await guest.reload();
   await expect(guest.getByText("NEW PRIVATE MESSAGE")).toBeVisible();
   await guest.getByRole("button", { name: "Open", exact: true }).click();
