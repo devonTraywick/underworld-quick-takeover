@@ -450,6 +450,87 @@ test("unified social hub preserves unread activity, opens notifications, and com
   await hostContext.close(); await guestContext.close();
 });
 
+test("authoritative action phases return open communications to the battlefield", async ({ browser }) => {
+  test.setTimeout(240_000);
+  for (const scenario of [{ label: "desktop", viewport: { width: 1280, height: 800 } }, { label: "mobile", viewport: { width: 390, height: 844 } }]) {
+    const hostContext = await browser.newContext({ viewport: scenario.viewport });
+    const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const { page: host, roomCode } = await createRoom(hostContext, `Return Host ${scenario.label}`);
+    const guest = await joinRoom(guestContext, roomCode, `Return Guest ${scenario.label}`);
+    await host.getByRole("button", { name: /Quick Match/ }).click();
+    await host.getByRole("button", { name: "Begin takeover" }).click();
+    await acceptBriefings(host, guest);
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
+
+    const hostEntry = scenario.viewport.width <= 820
+      ? host.getByRole("navigation", { name: "Command panels" })
+      : host.getByRole("navigation", { name: "City actions" });
+    await host.getByRole("button", { name: "Lock in & continue" }).click();
+    const guestEntry = guest.getByRole("navigation", { name: "Command panels" });
+    await guestEntry.getByRole("button", { name: "Make Deal" }).click();
+    await guest.getByRole("navigation", { name: "Social sections" }).getByRole("button", { name: "Public Wire" }).click();
+    await guest.getByRole("textbox", { name: "Chat message" }).fill("The wire stays unread through the phase change.");
+    await guest.getByRole("button", { name: "Send message", exact: true }).click();
+    await guest.getByRole("button", { name: "Close social hub" }).click();
+    await expect(host.getByText("NEW ON THE PUBLIC WIRE")).toBeVisible();
+    await host.getByRole("button", { name: "Dismiss notification" }).click();
+
+    const social = host.getByRole("complementary", { name: "Social hub" });
+    const sections = host.getByRole("navigation", { name: "Social sections" });
+    await hostEntry.getByRole("button", { name: "Make Deal" }).click();
+    await sections.getByRole("button", { name: "Private" }).click();
+    await expect(sections.getByRole("button", { name: /Public Wire/ }).locator("b")).toHaveText("1");
+    const unsent = `Unsent ${scenario.label} terms`;
+    await host.getByRole("textbox", { name: "Private message" }).fill(unsent);
+    await guest.getByRole("button", { name: "Lock in & continue" }).click();
+
+    await expect(host.locator(".game-page")).toHaveClass(/phase-draft/, { timeout: 15_000 });
+    await expect(social).toBeHidden();
+    await expect(host.getByRole("region", { name: "Current gameplay action" })).toBeFocused();
+    await expect(host.locator(".phase-guide")).toContainText("DRAFT — Choose a card");
+    await expect(host.locator(".phase-guide time")).toBeVisible();
+    await expect(hostEntry.locator(".attention-count, .social-entry > b")).toHaveText("1");
+    await host.screenshot({ path: `test-results/phase-return-${scenario.label}-draft.png`, fullPage: false });
+    await waitForPhaseReady(host); await waitForPhaseReady(guest);
+
+    await hostEntry.getByRole("button", { name: /Boss Comms|Boss Communications/ }).click();
+    await sections.getByRole("button", { name: "Private" }).click();
+    await expect(host.getByRole("textbox", { name: "Private message" })).toHaveValue(unsent);
+    await expect(host.locator(".chat-log")).not.toContainText(unsent);
+    await host.waitForTimeout(600);
+    await expect(social).toBeVisible();
+    await host.getByRole("button", { name: "Close social hub" }).click();
+    await host.locator(".action-card").first().click();
+    await host.getByRole("button", { name: "Lock in selected card" }).click();
+    await hostEntry.getByRole("button", { name: /Boss Comms|Boss Communications/ }).click();
+    await sections.getByRole("button", { name: "Deals" }).click();
+    await expect(host.getByRole("region", { name: "Deals workspace" })).toBeVisible();
+
+    await guest.locator(".action-card").first().click();
+    await guest.getByRole("button", { name: "Lock in selected card" }).click();
+    await expect(host.locator(".game-page")).toHaveClass(/phase-operations/, { timeout: 15_000 });
+    await expect(social).toBeHidden();
+    await expect(host.getByRole("region", { name: "Current gameplay action" })).toBeFocused();
+    await expect(host.locator(".phase-guide")).toContainText("OPERATIONS — Pick a target");
+    await expect(host.getByRole("button", { name: /deploy operation/i })).toBeVisible();
+    await host.screenshot({ path: `test-results/phase-return-${scenario.label}-operations.png`, fullPage: false });
+
+    await hostEntry.getByRole("button", { name: /Boss Comms|Boss Communications/ }).click();
+    await host.waitForTimeout(600);
+    await expect(social).toBeVisible();
+    await sections.getByRole("button", { name: "Private" }).click();
+    await expect(host.getByRole("textbox", { name: "Private message" })).toHaveValue(unsent);
+    await expect(host.locator(".chat-log")).not.toContainText(unsent);
+    await host.reload();
+    await expect(host.locator(".game-page")).toHaveClass(/phase-operations/);
+    await expect(host.getByRole("complementary", { name: "Social hub" })).toBeHidden();
+    await expect(host.getByRole("region", { name: "Current gameplay action" })).toBeVisible();
+    await expect(host.locator(".phase-guide time")).toBeVisible();
+
+    await hostContext.close(); await guestContext.close();
+  }
+});
+
 test("two isolated browser contexts play a contested simultaneous round and reconnect", async ({ browser }) => {
   test.setTimeout(process.env.PRODUCTION_URL ? 900_000 : 600_000);
   const hostContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });

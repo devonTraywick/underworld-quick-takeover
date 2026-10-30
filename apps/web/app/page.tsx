@@ -101,6 +101,8 @@ export default function Home() {
   const [operationDistrict, setOperationDistrict] = useState<DistrictId | undefined>();
   const [missionNotice, setMissionNotice] = useState<{ id: string; text: string } | null>(null);
   const priorMissionProgress = useRef<Record<string, number> | null>(null);
+  const priorAuthoritativePhase = useRef<PublicGame["phase"] | null>(null);
+  const gameplayActionRef = useRef<HTMLElement>(null);
   const playerId = game.session?.playerId ?? "";
   const attention = useSocialAttention(game.publicState, game.privateState, playerId);
 
@@ -118,6 +120,14 @@ export default function Home() {
     setMissionNotice({ id: advanced.id, text: `${OBJECTIVE_NAMES[advanced.id] ?? advanced.id}: ${advanced.current} of ${advanced.target}${status}` }); playCue("success");
     const timer = window.setTimeout(() => setMissionNotice(null), 3_500); return () => window.clearTimeout(timer);
   }, [game.privateState]);
+  useEffect(() => {
+    const phase = game.publicState?.game?.phase ?? null;
+    const previous = priorAuthoritativePhase.current;
+    priorAuthoritativePhase.current = phase;
+    if (!phase || phase === previous || !["draft", "operations"].includes(phase) || mobileOverlay !== "wire") return;
+    setMobileOverlay(null);
+    window.requestAnimationFrame(() => gameplayActionRef.current?.focus({ preventScroll: true }));
+  }, [game.publicState?.game?.phase, mobileOverlay]);
 
   if (!game.publicState) return <main className={`entry-page ${game.busy || !game.connected ? "is-loading" : ""}`}><AudioDirector phase="lobby" />
     <Onboarding />
@@ -188,7 +198,7 @@ export default function Home() {
           disabled={game.busy} propose={game.proposeDeal} respond={game.respondDeal} withdraw={game.withdrawDeal} /></div>}
       </aside>
       <nav className="city-actions" aria-label="City actions"><button onClick={() => { setMobileOverlay("objectives"); attention.markObjectives(); }}><span>◆</span>Missions <b>{game.privateState?.objectives.filter((objective) => objective.completed).length ?? 0}/3</b></button><button className="social-entry" onClick={() => openSocial(publicGame.phase === "negotiation" ? "deals" : "public", undefined, publicGame.phase === "negotiation")}><span>✦</span>{publicGame.phase === "negotiation" ? "Make Deal" : "Boss Communications"}{socialBadgeCount > 0 && <b>{socialBadgeCount}</b>}</button><button onClick={() => setMenuOpen(true)}><span>•••</span>More</button></nav>
-      <section className="action-dock">
+      <section className="action-dock" ref={gameplayActionRef} tabIndex={-1} aria-label="Current gameplay action">
         <AnimatePresence mode="wait"><motion.div key={`${publicGame.round}-${publicGame.phase}`} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}>
           <PhasePanel state={game.publicState} privateState={game.privateState} playerId={playerId} busy={game.busy}
             setReady={game.setReady} submitDraft={game.submitDraft} submitOperation={game.submitOperation} voteRematch={game.voteRematch} continueRound={game.continueRound} leaveMatch={game.leaveRoom} onRevealEffect={setRevealEffect} operationDistrict={operationDistrict} onOperationDistrict={setOperationDistrict} openHistory={() => setHistoryOpen(true)} />
