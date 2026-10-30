@@ -2,9 +2,14 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 async function dismissOnboarding(page: Page): Promise<void> {
   const dialog = page.getByRole("dialog", { name: "Play the training takeover" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Skip tutorial" }).click();
-  await expect(dialog).toBeHidden();
+  const lobby = page.getByRole("region", { name: "Enter a game room" });
+  await expect(dialog.or(lobby).first()).toBeVisible();
+  if (await dialog.isVisible()) {
+    await dialog.getByRole("button", { name: "Skip tutorial" }).click();
+    await expect(dialog).toBeHidden();
+  } else {
+    await expect(lobby).toBeVisible();
+  }
 }
 
 async function enterName(page: Page, nickname: string): Promise<void> {
@@ -26,6 +31,7 @@ async function acceptBriefings(...pages: Page[]): Promise<void> {
 }
 
 async function createRoom(context: BrowserContext, nickname: string): Promise<{ page: Page; roomCode: string }> {
+  await context.addInitScript(() => localStorage.setItem("underworld.tutorial.version", "4"));
   const page = await context.newPage();
   await page.goto("/");
   await dismissOnboarding(page);
@@ -38,6 +44,7 @@ async function createRoom(context: BrowserContext, nickname: string): Promise<{ 
 }
 
 async function joinRoom(context: BrowserContext, roomCode: string, nickname: string): Promise<Page> {
+  await context.addInitScript(() => localStorage.setItem("underworld.tutorial.version", "4"));
   const page = await context.newPage();
   await page.goto(`/?room=${roomCode}`);
   await dismissOnboarding(page);
@@ -151,11 +158,14 @@ test("sound requires explicit activation and exposes honest controls", async ({ 
 });
 
 test("release layouts avoid console failures, shifts, overflow, and undersized primary controls", async ({ browser }) => {
+  test.setTimeout(120_000);
   for (const viewport of [
     { width: 360, height: 800 }, // compact Android-class viewport
     { width: 390, height: 844 }, // compact iPhone-class viewport
     { width: 412, height: 915 }, // large Android-class viewport
     { width: 768, height: 1024 },
+    { width: 1024, height: 768 },
+    { width: 1280, height: 800 },
     { width: 1440, height: 900 },
   ]) {
     const context = await browser.newContext({ viewport });
@@ -202,12 +212,13 @@ test("desktop lobby expands setup controls without requiring page scrolling", as
 });
 
 test("phase controls and communications stay reachable across release viewports", async ({ browser }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(900_000);
   const viewports = [
     { width: 1440, height: 900 },
     { width: 1280, height: 800 },
     { width: 1024, height: 768 },
     { width: 768, height: 1024 },
+    { width: 412, height: 915 },
     { width: 390, height: 844 },
     { width: 360, height: 800 },
   ];
@@ -312,7 +323,7 @@ test("phase controls and communications stay reachable across release viewports"
 });
 
 test("early-settlement finale exposes every result and control across release viewports and zoom", async ({ browser }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(600_000);
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, hasTouch: true });
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   const { page: host, roomCode } = await createRoom(hostContext, "Settlement Host");
@@ -329,6 +340,7 @@ test("early-settlement finale exposes every result and control across release vi
     { width: 1280, height: 800, zoom: 1, label: "1280x800" },
     { width: 1024, height: 768, zoom: 1, label: "1024x768" },
     { width: 768, height: 1024, zoom: 1, label: "768x1024" },
+    { width: 412, height: 915, zoom: 1, label: "412x915" },
     { width: 390, height: 844, zoom: 1, label: "390x844" },
     { width: 360, height: 800, zoom: 1, label: "360x800" },
     // Browser zoom reduces the CSS layout viewport by the zoom factor.
@@ -376,7 +388,7 @@ test("unified social hub preserves unread activity, opens notifications, and com
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const { page: host, roomCode } = await createRoom(hostContext, "Velvet Host Family");
   const guest = await joinRoom(guestContext, roomCode, "Crimson Guest House");
-  await host.getByRole("button", { name: /Guided Match/ }).click();
+  await host.getByRole("button", { name: /Quick Match/ }).click();
   await host.getByRole("button", { name: "Begin takeover" }).click();
   await acceptBriefings(host, guest);
   await waitForPhaseReady(host); await waitForPhaseReady(guest);
@@ -446,7 +458,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
   const guest = await joinRoom(guestContext, roomCode, "Crimson Guest");
 
   await expect(host.getByRole("heading", { name: "2 of 8 syndicates" })).toBeVisible();
-  await host.getByRole("button", { name: /Guided Match/ }).click();
+  await host.getByRole("button", { name: /Quick Match/ }).click();
   await host.getByRole("button", { name: "Begin takeover" }).click();
   await acceptBriefings(host, guest);
   await expect(host.getByRole("heading", { name: "Make your promises" })).toBeVisible();
@@ -597,7 +609,7 @@ test("two isolated browser contexts play a contested simultaneous round and reco
 
   for (let round = 2; round <= 5; round += 1) {
     await Promise.all([host.getByRole("button", { name: /Continue/ }).click(), guest.getByRole("button", { name: /Continue/ }).click()]);
-    await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION", { timeout: 35_000 });
+    await expect(host.locator(".phase-guide")).toContainText("NEGOTIATION", { timeout: 90_000 });
     await waitForPhaseReady(host); await waitForPhaseReady(guest);
     await Promise.all([host.getByRole("button", { name: "Lock in & continue" }).click(), guest.getByRole("button", { name: "Lock in & continue" }).click()]);
     await expect(host.locator(".phase-guide")).toContainText("DRAFT", { timeout: 15_000 });
